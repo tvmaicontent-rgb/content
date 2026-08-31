@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Layers, CheckSquare, BarChart3, RotateCcw, ExternalLink } from 'lucide-react';
+import { Package, Layers, CheckSquare, BarChart3, RotateCcw, ExternalLink, RefreshCw, CheckCircle2, AlertCircle, CloudDownload } from 'lucide-react';
 import { SPREADSHEET_URL, KAM_SPREADSHEET_URL } from '../constants';
-import { googleSheetsService } from '../services/googleSheetsService';
+import { googleSheetsService, SyncResult } from '../services/googleSheetsService';
 import { storageService } from '../services/storageService';
 
 export type MainTabType = 'products' | 'groups' | 'tasks' | 'analytics';
@@ -17,15 +17,45 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   onTabChange,
   onResetData,
+  onSyncComplete,
 }) => {
   const [productCount, setProductCount] = useState(storageService.getProducts().length);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(googleSheetsService.getLastSyncTime());
 
   useEffect(() => {
     const unsubscribe = googleSheetsService.subscribe(() => {
       setProductCount(storageService.getProducts().length);
+      setIsSyncing(googleSheetsService.getIsSyncing());
+      setLastSyncTime(googleSheetsService.getLastSyncTime());
     });
     return unsubscribe;
   }, []);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    setSyncStatus('Загрузка свежих данных из Google Таблицы...');
+
+    try {
+      const result: SyncResult = await googleSheetsService.syncAll();
+      setIsSyncing(false);
+
+      if (result.success) {
+        setSyncStatus(`Успешно загружено: ${result.contentCount + result.kamCount} товаров (${result.contentCount} контент, ${result.kamCount} КАМ), ${result.tasksCount} задач, ${result.newProductsCount} новых товаров`);
+        setProductCount(result.contentCount + result.kamCount);
+        if (onSyncComplete) onSyncComplete();
+        setTimeout(() => setSyncStatus(null), 6000);
+      } else {
+        setSyncStatus(`Ошибка синхронизации: ${result.error || 'проверьте подключение'}`);
+        setTimeout(() => setSyncStatus(null), 8000);
+      }
+    } catch (err: any) {
+      setIsSyncing(false);
+      setSyncStatus(`Ошибка: ${err.message || 'не удалось выполнить синхронизацию'}`);
+      setTimeout(() => setSyncStatus(null), 8000);
+    }
+  };
 
   return (
     <>
@@ -53,8 +83,27 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Prominent Sync Button on Main Screen */}
+              <button
+                type="button"
+                id="main-sync-button"
+                onClick={handleSync}
+                disabled={isSyncing}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs cursor-pointer ${
+                  isSyncing
+                    ? 'bg-sky-100 text-sky-700 border border-sky-300 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white shadow-sky-200 hover:shadow-md active:scale-98'
+                }`}
+                title="Выгрузить все свежие строки и файлы из Google Таблиц в приложение"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="font-extrabold">
+                  {isSyncing ? 'Выгрузка из таблицы...' : 'Синхронизация с таблицей'}
+                </span>
+              </button>
+
               {/* Google Sheets external links buttons */}
-              <div className="flex items-center gap-1.5">
+              <div className="hidden lg:flex items-center gap-1.5">
                 <a
                   href={SPREADSHEET_URL}
                   target="_blank"
@@ -90,6 +139,33 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Sync Status Banner */}
+          {syncStatus && (
+            <div className={`py-2 px-3.5 my-2 border rounded-xl text-xs flex items-center justify-between font-semibold transition-all ${
+              syncStatus.startsWith('Ошибка')
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : isSyncing
+                ? 'bg-sky-50 border-sky-200 text-sky-800 animate-pulse'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            }`}>
+              <div className="flex items-center gap-2">
+                {isSyncing ? (
+                  <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin shrink-0" />
+                ) : syncStatus.startsWith('Ошибка') ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                )}
+                <span>{syncStatus}</span>
+              </div>
+              {lastSyncTime && (
+                <span className="text-[11px] font-mono text-slate-500 shrink-0 ml-2">
+                  {lastSyncTime}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Navigation Main Tabs */}
           <nav className="flex justify-start sm:justify-center -mb-px overflow-x-auto no-scrollbar gap-2 sm:gap-4 pt-1">

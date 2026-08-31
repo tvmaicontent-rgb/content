@@ -677,21 +677,30 @@ export class GoogleSheetsService {
       const workingKamGid = getGidFromUrl(WORKING_GROUPS_KAM_URL, '1367779997');
       const workingContentGid = getGidFromUrl(WORKING_GROUPS_CONTENT_URL, '33531424');
 
-      const contentExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${contentGid}`;
-      const kamExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${kamGid}`;
-      const tasksExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${tasksGid}`;
-      const newProductsExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${newProductsGid}`;
-      const contactsExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${contactsGid}`;
-      const managersExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${managersGid}`;
-      const workingKamExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${workingKamGid}`;
-      const workingContentExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${workingContentGid}`;
+      const cacheBust = `_t=${Date.now()}`;
+      const contentExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${contentGid}&${cacheBust}`;
+      const kamExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${kamGid}&${cacheBust}`;
+      const tasksExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${tasksGid}&${cacheBust}`;
+      const newProductsExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${newProductsGid}&${cacheBust}`;
+      const contactsExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${contactsGid}&${cacheBust}`;
+      const managersExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${managersGid}&${cacheBust}`;
+      const workingKamExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${workingKamGid}&${cacheBust}`;
+      const workingContentExportUrl = `https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/export?format=csv&gid=${workingContentGid}&${cacheBust}`;
       
       const groupsGid = getGidFromUrl(GROUPS_SPREADSHEET_URL, '0');
-      const groupsExportUrl = `https://docs.google.com/spreadsheets/d/1LABW3U4TdX6cDjps_g_mBBsWRW8_Xx7W8LqBZB4CO2g/export?format=csv&gid=${groupsGid}`;
+      const groupsExportUrl = `https://docs.google.com/spreadsheets/d/1LABW3U4TdX6cDjps_g_mBBsWRW8_Xx7W8LqBZB4CO2g/export?format=csv&gid=${groupsGid}&${cacheBust}`;
       const orderGid = getGidFromUrl(SITE_ORDER_SPREADSHEET_URL, '442661295');
-      const orderExportUrl = `https://docs.google.com/spreadsheets/d/1LABW3U4TdX6cDjps_g_mBBsWRW8_Xx7W8LqBZB4CO2g/export?format=csv&gid=${orderGid}`;
+      const orderExportUrl = `https://docs.google.com/spreadsheets/d/1LABW3U4TdX6cDjps_g_mBBsWRW8_Xx7W8LqBZB4CO2g/export?format=csv&gid=${orderGid}&${cacheBust}`;
 
-      // Fetch all sheets in parallel
+      const fetchOptions: RequestInit = {
+        cache: 'no-store',
+        headers: {
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache',
+        },
+      };
+
+      // Fetch all sheets in parallel with cache busting
       const [
         contentRes,
         kamRes,
@@ -704,38 +713,38 @@ export class GoogleSheetsService {
         groupsRes,
         orderRes,
       ] = await Promise.all([
-        fetch(contentExportUrl).then(r => {
+        fetch(contentExportUrl, fetchOptions).then(r => {
           if (!r.ok) throw new Error(`HTTP ${r.status} fetching content sheet`);
           return r.text();
         }),
-        fetch(kamExportUrl).then(r => {
+        fetch(kamExportUrl, fetchOptions).then(r => {
           if (!r.ok) throw new Error(`HTTP ${r.status} fetching KAM sheet`);
           return r.text();
         }),
-        fetch(tasksExportUrl).then(r => {
+        fetch(tasksExportUrl, fetchOptions).then(r => {
           if (!r.ok) throw new Error(`HTTP ${r.status} fetching tasks sheet`);
           return r.text();
         }),
-        fetch(newProductsExportUrl).then(r => {
+        fetch(newProductsExportUrl, fetchOptions).then(r => {
           if (!r.ok) throw new Error(`HTTP ${r.status} fetching new products sheet`);
           return r.text();
         }),
-        fetch(contactsExportUrl)
+        fetch(contactsExportUrl, fetchOptions)
           .then(r => (r.ok ? r.text() : ''))
           .catch(() => ''),
-        fetch(managersExportUrl)
+        fetch(managersExportUrl, fetchOptions)
           .then(r => (r.ok ? r.text() : ''))
           .catch(() => ''),
-        fetch(workingKamExportUrl)
+        fetch(workingKamExportUrl, fetchOptions)
           .then(r => (r.ok ? r.text() : ''))
           .catch(() => ''),
-        fetch(workingContentExportUrl)
+        fetch(workingContentExportUrl, fetchOptions)
           .then(r => (r.ok ? r.text() : ''))
           .catch(() => ''),
-        fetch(groupsExportUrl)
+        fetch(groupsExportUrl, fetchOptions)
           .then(r => (r.ok ? r.text() : ''))
           .catch(() => ''),
-        fetch(orderExportUrl)
+        fetch(orderExportUrl, fetchOptions)
           .then(r => (r.ok ? r.text() : ''))
           .catch(() => ''),
       ]);
@@ -760,40 +769,64 @@ export class GoogleSheetsService {
       }
 
       // Parse Content Dept Products
-      const contentProducts: ProductItem[] = contentRows.map((r, idx) => ({
-        id: `cnt-${cleanStr(r[0]) || idx + 1}`,
-        externalCode: cleanStr(r[1]),
-        group3: cleanStr(r[2]),
-        title: cleanStr(r[3]),
-        status: cleanStr(r[4]) || '🆕 Новый',
-        pauseReason: cleanStr(r[5]),
-        pauseDate: cleanStr(r[6]),
-        executor: cleanStr(r[7]),
-        dateTaken: cleanStr(r[8]),
-        dateCompleted: cleanStr(r[9]),
-        dateFinished: cleanStr(r[10]),
-        sourceFile: cleanStr(r[11]),
-        dateUploaded: cleanStr(r[12]),
-        department: 'Отдел контента',
-      }));
+      const contentProducts: ProductItem[] = contentRows
+        .filter(r => r && r.some(cell => cleanStr(cell).length > 0))
+        .map((r, idx) => {
+          const rawId = cleanStr(r[0]);
+          const externalCode = cleanStr(r[1]);
+          const group3 = cleanStr(r[2]);
+          const title = cleanStr(r[3]);
+          const dateUploaded = cleanStr(r[12]) || cleanStr(r[8]) || '';
+          const sourceFile = cleanStr(r[11]) || (dateUploaded ? `Партия от ${dateUploaded}` : (rawId ? `Файл ${rawId}` : 'Google Sheets'));
+
+          return {
+            id: `cnt-${rawId || idx + 1}`,
+            externalCode: externalCode || (rawId ? `SKU-${rawId}` : `SKU-${idx + 1}`),
+            group3,
+            title: title || group3 || `Товар ${externalCode || rawId || idx + 1}`,
+            status: cleanStr(r[4]) || '🆕 Новый',
+            pauseReason: cleanStr(r[5]),
+            pauseDate: cleanStr(r[6]),
+            executor: cleanStr(r[7]),
+            dateTaken: cleanStr(r[8]),
+            dateCompleted: cleanStr(r[9]),
+            dateFinished: cleanStr(r[10]),
+            sourceFile,
+            dateUploaded: dateUploaded || new Date().toLocaleDateString('ru-RU'),
+            department: 'Отдел контента' as DepartmentType,
+          };
+        })
+        .filter(p => p.externalCode || p.title || p.group3);
 
       // Parse Commercial Dept (KAM) Products
-      const kamProducts: ProductItem[] = kamRows.map((r, idx) => ({
-        id: `kam-${cleanStr(r[0]) || idx + 1}`,
-        externalCode: cleanStr(r[1]),
-        group3: cleanStr(r[2]),
-        title: cleanStr(r[3]),
-        status: cleanStr(r[4]) || '🆕 Новый',
-        pauseReason: cleanStr(r[5]),
-        pauseDate: cleanStr(r[6]),
-        executor: cleanStr(r[7]),
-        dateTaken: cleanStr(r[8]),
-        dateCompleted: cleanStr(r[9]),
-        dateFinished: cleanStr(r[10]),
-        sourceFile: cleanStr(r[11]),
-        dateUploaded: cleanStr(r[12]),
-        department: 'Коммерческий отдел',
-      }));
+      const kamProducts: ProductItem[] = kamRows
+        .filter(r => r && r.some(cell => cleanStr(cell).length > 0))
+        .map((r, idx) => {
+          const rawId = cleanStr(r[0]);
+          const externalCode = cleanStr(r[1]);
+          const group3 = cleanStr(r[2]);
+          const title = cleanStr(r[3]);
+          const dateUploaded = cleanStr(r[12]) || cleanStr(r[8]) || '';
+          const sourceFile = cleanStr(r[11]) || (dateUploaded ? `Партия от ${dateUploaded}` : (rawId ? `Файл ${rawId}` : 'Google Sheets'));
+
+          return {
+            id: `kam-${rawId || idx + 1}`,
+            externalCode: externalCode || (rawId ? `SKU-${rawId}` : `SKU-${idx + 1}`),
+            group3,
+            title: title || group3 || `Товар ${externalCode || rawId || idx + 1}`,
+            status: cleanStr(r[4]) || '🆕 Новый',
+            pauseReason: cleanStr(r[5]),
+            pauseDate: cleanStr(r[6]),
+            executor: cleanStr(r[7]),
+            dateTaken: cleanStr(r[8]),
+            dateCompleted: cleanStr(r[9]),
+            dateFinished: cleanStr(r[10]),
+            sourceFile,
+            dateUploaded: dateUploaded || new Date().toLocaleDateString('ru-RU'),
+            department: 'Коммерческий отдел' as DepartmentType,
+          };
+        })
+        .filter(p => p.externalCode || p.title || p.group3);
 
       // Parse Tasks
       const tasks: TaskItem[] = taskRows.map((r, idx) => ({

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DepartmentType, FileGroupSummary, ProductItem } from '../../types';
 import { storageService } from '../../services/storageService';
+import { googleSheetsService } from '../../services/googleSheetsService';
 import { SPREADSHEET_URL, KAM_SPREADSHEET_URL } from '../../constants';
 import { ProductUploadZone } from './ProductUploadZone';
 import { StatusActionsBar } from './StatusActionsBar';
@@ -18,6 +19,7 @@ export const ProductsTab: React.FC = () => {
   const [department, setDepartment] = useState<DepartmentType>('Отдел контента');
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [summaries, setSummaries] = useState<FileGroupSummary[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Modals state
   const [isTakeInWorkOpen, setIsTakeInWorkOpen] = useState(false);
@@ -33,6 +35,18 @@ export const ProductsTab: React.FC = () => {
     setProducts(allProducts);
     const calculatedSummaries = storageService.buildFileSummaries(allProducts, department);
     setSummaries(calculatedSummaries);
+  };
+
+  const handleSyncFromSheets = async () => {
+    setIsSyncing(true);
+    try {
+      await googleSheetsService.syncAll();
+      loadData();
+    } catch (e) {
+      console.error('Manual sync error in ProductsTab:', e);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -60,7 +74,7 @@ export const ProductsTab: React.FC = () => {
           <button
             type="button"
             onClick={() => setDepartment('Отдел контента')}
-            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
               department === 'Отдел контента'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -71,7 +85,7 @@ export const ProductsTab: React.FC = () => {
           <button
             type="button"
             onClick={() => setDepartment('Коммерческий отдел')}
-            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
               department === 'Коммерческий отдел'
                 ? 'bg-white text-indigo-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -81,15 +95,32 @@ export const ProductsTab: React.FC = () => {
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={loadData}
-          className="px-3 py-1.5 text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors self-end sm:self-auto"
-          title="Обновить данные"
-        >
-          <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-          <span>Обновить</span>
-        </button>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={handleSyncFromSheets}
+            disabled={isSyncing}
+            className={`px-3 py-1.5 border rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              isSyncing
+                ? 'bg-sky-50 text-sky-700 border-sky-200 cursor-not-allowed'
+                : 'bg-sky-600 hover:bg-sky-700 text-white border-sky-700 shadow-xs'
+            }`}
+            title="Выгрузить данные из Google Таблицы в приложение"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Синхронизация...' : 'Выгрузить из таблицы'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={loadData}
+            className="px-3 py-1.5 text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Обновить локальные данные"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+            <span>Обновить</span>
+          </button>
+        </div>
       </div>
 
       {/* Top 3 Control Sections */}
