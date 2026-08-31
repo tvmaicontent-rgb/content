@@ -101,7 +101,7 @@ export const GroupOrderModal: React.FC<GroupOrderModalProps> = ({
   }, [filtered]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="📌 Порядок расположения групп на сайте" maxWidth="5xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="📌 Порядок расположения групп на сайте" maxWidth="6xl">
       <div className="space-y-4">
         {/* Top Controls & Description */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">

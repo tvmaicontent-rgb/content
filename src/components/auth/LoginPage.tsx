@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User, KeyRound, AlertCircle, ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { AuthUser } from '../../types/auth';
+import { safeErrorMessage } from '../../utils/errorUtils';
 
 interface LoginPageProps {
   onLoginSuccess: (user: AuthUser) => void;
@@ -35,11 +36,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       if (result.success && result.user) {
         onLoginSuccess(result.user);
       } else {
-        setError(result.error || 'Неверный логин или пароль');
+        setError(safeErrorMessage(result.error, 'Неверный логин или пароль'));
       }
     } catch (err: any) {
       setIsLoading(false);
-      setError(err.message || 'Ошибка подключения к серверу');
+      setError(safeErrorMessage(err, 'Ошибка подключения к серверу'));
     }
   };
 

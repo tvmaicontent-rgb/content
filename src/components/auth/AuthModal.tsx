@@ -174,7 +174,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Авторизация & Управление Bearer токенами"
-      maxWidth="max-w-3xl"
+      maxWidth="4xl"
     >
       <div className="space-y-4">
         {/* Navigation Tabs */}

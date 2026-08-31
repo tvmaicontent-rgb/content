@@ -4,6 +4,7 @@ import { googleSheetsService } from '../../services/googleSheetsService';
 import { storageService } from '../../services/storageService';
 import { authService } from '../../services/authService';
 import { ProductItem, DepartmentType } from '../../types';
+import { safeErrorMessage } from '../../utils/errorUtils';
 import {
   Lock,
   KeyRound,
@@ -125,7 +126,7 @@ export const DeveloperModal: React.FC<DeveloperModalProps> = ({
       setSyncStatus(`Успешно загружено: ${res.contentCount + res.kamCount} товаров, ${res.tasksCount} задач, ${res.groupsCount} групп`);
       if (onSyncComplete) onSyncComplete();
     } else {
-      setSyncStatus(`Ошибка: ${res.error || 'Не удалось синхронизировать'}`);
+      setSyncStatus(`Ошибка: ${safeErrorMessage(res.error, 'Не удалось синхронизировать')}`);
     }
     setLogs(googleSheetsService.getPushLog());
     setTimeout(() => setSyncStatus(null), 7000);
@@ -152,12 +153,12 @@ export const DeveloperModal: React.FC<DeveloperModalProps> = ({
 
       const res = await googleSheetsService.pushDepartmentProducts(dept, targetProducts);
       if (res.success) {
-        setPushStatus({ type: 'success', message: res.message });
+        setPushStatus({ type: 'success', message: safeErrorMessage(res.message, 'Успешно выгружено') });
       } else {
-        setPushStatus({ type: 'error', message: res.message });
+        setPushStatus({ type: 'error', message: safeErrorMessage(res.message, 'Ошибка выгрузки') });
       }
     } catch (err: any) {
-      setPushStatus({ type: 'error', message: `Ошибка: ${err.message || err}` });
+      setPushStatus({ type: 'error', message: `Ошибка: ${safeErrorMessage(err, 'Сбой отправки')}` });
     } finally {
       if (isKam) setIsPushingKam(false);
       else setIsPushingContent(false);
@@ -572,7 +573,7 @@ function handleRequest(data) {
       isOpen={isOpen}
       onClose={onClose}
       title="Панель разработчика и синхронизации"
-      maxWidth="max-w-4xl"
+      maxWidth="4xl"
     >
       <div className="space-y-5">
         {/* Authentication Wall */}

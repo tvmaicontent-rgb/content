@@ -5,6 +5,7 @@ import { storageService } from '../../services/storageService';
 import { googleSheetsService } from '../../services/googleSheetsService';
 import { parseNewProductsBatchFile, exportToExcel } from '../../services/excelService';
 import { formatCurrentDate, NEW_PRODUCTS_SPREADSHEET_URL } from '../../constants';
+import { safeErrorMessage } from '../../utils/errorUtils';
 import { SortHeader } from '../common/SortHeader';
 import { SortConfig, sortData } from '../../utils/sortUtils';
 import { GoogleSheetsModal } from './GoogleSheetsModal';
@@ -194,7 +195,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
       setSyncStatus(`Синхронизировано ${res.newProductsCount || storageService.getNewProducts().length} товаров в партиях!`);
       setTimeout(() => setSyncStatus(null), 4000);
     } else {
-      setSyncStatus(`Ошибка: ${res.error || 'не удалось синхронизировать'}`);
+      setSyncStatus(`Ошибка: ${safeErrorMessage(res.error, 'не удалось синхронизировать')}`);
       setTimeout(() => setSyncStatus(null), 5000);
     }
   };

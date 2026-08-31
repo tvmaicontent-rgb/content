@@ -2,6 +2,7 @@ import { ProductItem, TaskItem, CategoryGroup, GroupOrderItem, NewProductItem, S
 import { idb } from './indexedDbService';
 import { storageService } from './storageService';
 import { authService } from './authService';
+import { safeErrorMessage } from '../utils/errorUtils';
 
 export interface SyncResult {
   success: boolean;
@@ -22,6 +23,110 @@ export interface PushLogItem {
   details: string;
   time: string;
   status: 'pending' | 'success' | 'error';
+}
+
+const DEFAULT_SPREADSHEET_ID = '1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek';
+const GROUPS_SPREADSHEET_ID = '1LABW3U4TdX6cDjps_g_mBBsWRW8_Xx7W8LqBZB4CO2g';
+
+const GIDS = {
+  CONTENT: '59376984',
+  KAM: '183144046',
+  TASKS: '1482592400',
+  NEW_PRODUCTS: '413377182',
+  CONTACTS: '1825148105',
+  MANAGERS: '1474629181',
+  WORKING_KAM: '1367779997',
+  WORKING_CONTENT: '33531424',
+  GROUPS: '0',
+  SITE_ORDER: '442661295',
+};
+
+// Client-side CSV helper
+function parseCSV(text: string): string[][] {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let inQuotes = false;
+  let field = '';
+
+  let cleanText = text || '';
+  if (cleanText.charCodeAt(0) === 0xfeff) {
+    cleanText = cleanText.slice(1);
+  }
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const c = cleanText[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (i + 1 < cleanText.length && cleanText[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field);
+        field = '';
+      } else if (c === '\n' || c === '\r') {
+        if (c === '\r' && i + 1 < cleanText.length && cleanText[i + 1] === '\n') {
+          i++;
+        }
+        row.push(field);
+        field = '';
+        if (row.some(f => f.trim().length > 0)) {
+          lines.push(row);
+        }
+        row = [];
+      } else {
+        field += c;
+      }
+    }
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    if (row.some(f => f.trim().length > 0)) {
+      lines.push(row);
+    }
+  }
+
+  return lines;
+}
+
+function cleanStr(val: string | undefined | null): string {
+  if (!val) return '';
+  return val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim();
+}
+
+function extractBatchInfo(header: string) {
+  const raw = cleanStr(header);
+  let fileName = '';
+  const fileMatch =
+    raw.match(/\((export_[^)]+\.(?:xlsx|xls))\)/i) ||
+    raw.match(/\(([^)]+\.(?:xlsx|xls))\)/i) ||
+    raw.match(/\(([^)]+)\)/);
+  if (fileMatch) {
+    fileName = fileMatch[1].trim();
+  }
+
+  const dateMatch = raw.match(/(\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/);
+  const dateStr = dateMatch ? dateMatch[1] : '';
+
+  let displayTitle = raw;
+  if (!displayTitle.startsWith('📅') && !displayTitle.startsWith('Партия')) {
+    displayTitle = `📅 ${raw}`;
+  }
+
+  return {
+    title: displayTitle,
+    date: dateStr || raw,
+    file: fileName || (dateStr ? `Партия от ${dateStr}` : raw),
+  };
 }
 
 export class GoogleSheetsService {
@@ -110,7 +215,7 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Test webhook connection securely via server proxy
+   * Test webhook connection securely via server proxy or direct fallback
    */
   async testWebhook(targetUrl?: string): Promise<{ success: boolean; message: string; spreadsheetName?: string }> {
     const url = (targetUrl !== undefined ? targetUrl : this.webhookUrl).trim();
@@ -121,6 +226,22 @@ export class GoogleSheetsService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhookUrl: url }),
       });
+
+      if (res.status === 404 && url) {
+        // Direct client fallback
+        const directRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'ping' }),
+        });
+        const data = await directRes.json();
+        return {
+          success: Boolean(data && data.success),
+          message: data?.message || 'Связь с Google Apps Script активна',
+          spreadsheetName: data?.spreadsheetName,
+        };
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
         return {
@@ -131,18 +252,329 @@ export class GoogleSheetsService {
       }
       return {
         success: false,
-        message: data.message || data.error || 'Ошибка связи с Google Apps Script',
+        message: safeErrorMessage(data?.message || data?.error, 'Ошибка связи с Google Apps Script'),
       };
     } catch (err: any) {
       return {
         success: false,
-        message: `Ошибка соединения с сервером: ${err.message}`,
+        message: `Ошибка: ${safeErrorMessage(err, 'Сбой подключения к Webhook')}`,
       };
     }
   }
 
+  private async fetchDirectCsv(docId: string, gid: string): Promise<string> {
+    const url = `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&gid=${gid}&_t=${Date.now()}`;
+    const res = await fetch(url, {
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Google Sheets HTTP ${res.status} for gid ${gid}`);
+    }
+    return res.text();
+  }
+
+  private async performClientDirectSync(): Promise<SyncResult> {
+    const [
+      contentCsv,
+      kamCsv,
+      tasksCsv,
+      newProductsCsv,
+      contactsCsv,
+      managersCsv,
+      groupsCsv,
+      orderCsv,
+    ] = await Promise.all([
+      this.fetchDirectCsv(DEFAULT_SPREADSHEET_ID, GIDS.CONTENT),
+      this.fetchDirectCsv(DEFAULT_SPREADSHEET_ID, GIDS.KAM),
+      this.fetchDirectCsv(DEFAULT_SPREADSHEET_ID, GIDS.TASKS),
+      this.fetchDirectCsv(DEFAULT_SPREADSHEET_ID, GIDS.NEW_PRODUCTS),
+      this.fetchDirectCsv(DEFAULT_SPREADSHEET_ID, GIDS.CONTACTS).catch(() => ''),
+      this.fetchDirectCsv(DEFAULT_SPREADSHEET_ID, GIDS.MANAGERS).catch(() => ''),
+      this.fetchDirectCsv(GROUPS_SPREADSHEET_ID, GIDS.GROUPS).catch(() => ''),
+      this.fetchDirectCsv(GROUPS_SPREADSHEET_ID, GIDS.SITE_ORDER).catch(() => ''),
+    ]);
+
+    const contentRows = parseCSV(contentCsv).slice(1);
+    const kamRows = parseCSV(kamCsv).slice(1);
+    const taskRows = parseCSV(tasksCsv).slice(1);
+    const newProductRawRows = parseCSV(newProductsCsv);
+    const contactRawRows = contactsCsv ? parseCSV(contactsCsv).slice(1) : [];
+    const managerRawRows = managersCsv ? parseCSV(managersCsv).slice(1) : [];
+
+    const managersDict: Record<string, string> = {};
+    for (const mr of managerRawRows) {
+      const code = cleanStr(mr[0]);
+      const name = cleanStr(mr[1]);
+      if (code && name) managersDict[code] = name;
+    }
+
+    const contentProducts: ProductItem[] = contentRows
+      .filter(r => r && r.some(cell => cleanStr(cell).length > 0))
+      .map((r, idx) => {
+        const rawId = cleanStr(r[0]);
+        const externalCode = cleanStr(r[1]);
+        const group3 = cleanStr(r[2]);
+        const title = cleanStr(r[3]);
+        const dateUploaded = cleanStr(r[12]) || cleanStr(r[8]) || '';
+        const sourceFile = cleanStr(r[11]) || (dateUploaded ? `Партия от ${dateUploaded}` : (rawId ? `Файл ${rawId}` : 'Google Sheets'));
+
+        return {
+          id: `cnt-${rawId || idx + 1}`,
+          externalCode: externalCode || (rawId ? `SKU-${rawId}` : `SKU-${idx + 1}`),
+          group3,
+          title: title || group3 || `Товар ${externalCode || rawId || idx + 1}`,
+          status: cleanStr(r[4]) || '🆕 Новый',
+          pauseReason: cleanStr(r[5]),
+          pauseDate: cleanStr(r[6]),
+          executor: cleanStr(r[7]),
+          dateTaken: cleanStr(r[8]),
+          dateCompleted: cleanStr(r[9]),
+          dateFinished: cleanStr(r[10]),
+          sourceFile,
+          dateUploaded: dateUploaded || new Date().toLocaleDateString('ru-RU'),
+          department: 'Отдел контента' as DepartmentType,
+        };
+      })
+      .filter(p => p.externalCode || p.title || p.group3);
+
+    const kamProducts: ProductItem[] = kamRows
+      .filter(r => r && r.some(cell => cleanStr(cell).length > 0))
+      .map((r, idx) => {
+        const rawId = cleanStr(r[0]);
+        const externalCode = cleanStr(r[1]);
+        const group3 = cleanStr(r[2]);
+        const title = cleanStr(r[3]);
+        const dateUploaded = cleanStr(r[12]) || cleanStr(r[8]) || '';
+        const sourceFile = cleanStr(r[11]) || (dateUploaded ? `Партия от ${dateUploaded}` : (rawId ? `Файл ${rawId}` : 'Google Sheets'));
+
+        return {
+          id: `kam-${rawId || idx + 1}`,
+          externalCode: externalCode || (rawId ? `SKU-${rawId}` : `SKU-${idx + 1}`),
+          group3,
+          title: title || group3 || `Товар ${externalCode || rawId || idx + 1}`,
+          status: cleanStr(r[4]) || '🆕 Новый',
+          pauseReason: cleanStr(r[5]),
+          pauseDate: cleanStr(r[6]),
+          executor: cleanStr(r[7]),
+          dateTaken: cleanStr(r[8]),
+          dateCompleted: cleanStr(r[9]),
+          dateFinished: cleanStr(r[10]),
+          sourceFile,
+          dateUploaded: dateUploaded || new Date().toLocaleDateString('ru-RU'),
+          department: 'Коммерческий отдел' as DepartmentType,
+        };
+      })
+      .filter(p => p.externalCode || p.title || p.group3);
+
+    const tasks: TaskItem[] = taskRows.map((r, idx) => ({
+      id: cleanStr(r[0]) || String(idx + 1),
+      title: cleanStr(r[1]),
+      description: cleanStr(r[2]),
+      executors: cleanStr(r[3]),
+      status: (cleanStr(r[4]) || 'Новая') as TaskItem['status'],
+      urgency: (cleanStr(r[5]) || 'Текущая задача') as TaskItem['urgency'],
+      imageBase64: cleanStr(r[6]),
+      createdAt: cleanStr(r[7]),
+      updatedAt: cleanStr(r[8]),
+    }));
+
+    const contacts: SupplierContact[] = contactRawRows
+      .map((r, idx) => ({
+        id: `cont-${idx + 1}`,
+        producer: cleanStr(r[0]),
+        site: cleanStr(r[1]),
+        contact: cleanStr(r[2]),
+        name: cleanStr(r[3]),
+        productGroups: cleanStr(r[4]),
+        note: cleanStr(r[5]),
+      }))
+      .filter(c => c.producer || c.name || c.contact || c.site || c.productGroups || c.note);
+
+    const newProducts: NewProductItem[] = [];
+    let currentBatch = extractBatchInfo('Загрузка: 20.05.2026 09:15:20');
+
+    for (let i = 0; i < newProductRawRows.length; i++) {
+      const r = newProductRawRows[i];
+      const firstCell = cleanStr(r[0]);
+      const isBatchHeader =
+        firstCell.startsWith('📅') ||
+        firstCell.toLowerCase().startsWith('загрузка') ||
+        (firstCell.length > 10 && !/^\d{5,10}$/.test(firstCell) && firstCell !== 'Внешний код');
+
+      if (isBatchHeader) {
+        currentBatch = extractBatchInfo(firstCell);
+        continue;
+      }
+
+      if (firstCell === 'Внешний код' || !firstCell) continue;
+
+      let mgrCode = cleanStr(r[3]);
+      let mgrName = cleanStr(r[5]);
+      let section = cleanStr(r[4]);
+
+      if (/^\d+$/.test(section) && !mgrCode) {
+        mgrCode = section;
+        section = mgrName;
+        mgrName = '';
+      }
+
+      if (!mgrName && mgrCode && managersDict[mgrCode]) {
+        mgrName = managersDict[mgrCode];
+      }
+
+      const isAdded = (r[7] || '').toUpperCase() === 'TRUE' || (r[7] || '').toLowerCase().includes('да');
+      const isExported = (r[8] || '').toUpperCase() === 'TRUE' || (r[8] || '').toLowerCase().includes('да');
+
+      newProducts.push({
+        id: `np-${i}`,
+        externalCode: firstCell,
+        title: cleanStr(r[1]),
+        createdDate: cleanStr(r[2]),
+        managerCode: mgrCode,
+        sectionName: section,
+        manager: mgrName,
+        content: cleanStr(r[6]),
+        isAdded,
+        isExported,
+        batchDate: currentBatch.date,
+        batchFile: currentBatch.file,
+        batchTitle: currentBatch.title,
+      });
+    }
+
+    const groupsRows = groupsCsv ? parseCSV(groupsCsv).slice(1) : [];
+    const categoryGroups: CategoryGroup[] = [];
+    if (groupsRows.length > 0) {
+      for (let i = 0; i < groupsRows.length; i++) {
+        const r = groupsRows[i];
+        if (!r || r.every(cell => !cleanStr(cell))) continue;
+        const g3 = cleanStr(r[2]);
+        if (!g3) continue;
+
+        categoryGroups.push({
+          id: `grp-${i + 1}`,
+          group1: cleanStr(r[0]),
+          group2: cleanStr(r[1]),
+          group3: g3,
+          manager: cleanStr(r[3]),
+          includedMaterik: cleanStr(r[4]) || '0',
+          includedPalas: cleanStr(r[5]) || '0',
+          skuCount: cleanStr(r[6]) || '0',
+          startDate: cleanStr(r[7]),
+          donorRequestDate: cleanStr(r[8]),
+          donorReceivedDate: cleanStr(r[9]),
+          approvalSentDate: cleanStr(r[10]),
+          approvalDate: cleanStr(r[11]),
+          releaseDate: cleanStr(r[12]),
+          palasAllocated: cleanStr(r[13]),
+          kamFile: cleanStr(r[14]),
+        });
+      }
+    }
+
+    const orderRows = orderCsv ? parseCSV(orderCsv) : [];
+    let currentGroup1 = '';
+    let currentGroup2Cols: string[] = [];
+    const groupOrders: GroupOrderItem[] = [];
+
+    if (orderRows.length > 0) {
+      for (let rowIndex = 0; rowIndex < orderRows.length; rowIndex++) {
+        const r = orderRows[rowIndex].map(c => cleanStr(c));
+        if (r.every(c => !c)) continue;
+
+        const firstCell = r[0];
+        const otherCells = r.slice(1).filter(Boolean);
+
+        if (firstCell && otherCells.length === 0 && isNaN(Number(firstCell))) {
+          currentGroup1 = firstCell;
+          currentGroup2Cols = [];
+          continue;
+        }
+
+        if (!firstCell && otherCells.length > 0) {
+          currentGroup2Cols = r.slice(1);
+          continue;
+        }
+
+        if (firstCell && !isNaN(Number(firstCell)) && currentGroup2Cols.length > 0) {
+          const pos = parseInt(firstCell, 10);
+          for (let colIdx = 0; colIdx < currentGroup2Cols.length; colIdx++) {
+            const g2 = currentGroup2Cols[colIdx];
+            const g3 = r[colIdx + 1];
+            if (g3 && g2 && currentGroup1) {
+              groupOrders.push({
+                id: `ord-${groupOrders.length + 1}`,
+                group1: currentGroup1,
+                group2: g2,
+                group3: g3,
+                groupName: g3,
+                section: g2,
+                status: 'Активно',
+                position: pos,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const currentProducts = storageService.getProducts();
+    const existingGoogleCodes = new Set(
+      [...contentProducts, ...kamProducts].map(p => `${p.department}_${p.externalCode}_${p.sourceFile}`)
+    );
+    const customLocalProducts = currentProducts.filter(
+      p => !existingGoogleCodes.has(`${p.department}_${p.externalCode}_${p.sourceFile}`) && p.sourceFile && !p.id.startsWith('cnt-') && !p.id.startsWith('kam-')
+    );
+
+    const allMergedProducts = [...customLocalProducts, ...contentProducts, ...kamProducts];
+
+    storageService.saveProducts(allMergedProducts);
+    storageService.saveTasks(tasks);
+    if (categoryGroups.length > 0) storageService.saveCategoryGroups(categoryGroups);
+    if (groupOrders.length > 0) storageService.saveGroupOrders(groupOrders);
+    if (contacts.length > 0) storageService.saveContacts(contacts);
+    if (newProducts.length > 0) storageService.saveNewProducts(newProducts);
+
+    const nowStr = new Date().toLocaleString('ru-RU');
+    await Promise.all([
+      idb.setAll('products', allMergedProducts),
+      idb.setAll('tasks', tasks),
+      categoryGroups.length > 0 ? idb.setAll('groups', categoryGroups) : Promise.resolve(),
+      groupOrders.length > 0 ? idb.setAll('groupOrders', groupOrders) : Promise.resolve(),
+      contacts.length > 0 ? idb.setAll('contacts', contacts) : Promise.resolve(),
+      newProducts.length > 0 ? idb.setAll('newProducts', newProducts) : Promise.resolve(),
+      idb.putMetadata('last_sync', {
+        time: nowStr,
+        contentCount: contentProducts.length,
+        kamCount: kamProducts.length,
+        tasksCount: tasks.length,
+        groupsCount: categoryGroups.length,
+        newProductsCount: newProducts.length,
+        contactsCount: contacts.length,
+        source: 'Google Sheets (Direct)',
+      }),
+    ]);
+
+    this.lastSyncTime = nowStr;
+    return {
+      success: true,
+      contentCount: contentProducts.length,
+      kamCount: kamProducts.length,
+      tasksCount: tasks.length,
+      groupsCount: categoryGroups.length,
+      newProductsCount: newProducts.length,
+      contactsCount: contacts.length,
+      timestamp: nowStr,
+      source: 'Google Sheets (Direct)',
+    };
+  }
+
   /**
-   * Main Synchronization method: Requests server proxy with Bearer authentication
+   * Main Synchronization method: Requests server proxy with Bearer authentication,
+   * falls back to direct Google Sheets fetching if running on static hosting or server unreachable.
    */
   async syncAll(): Promise<SyncResult> {
     if (this.isSyncing) {
@@ -164,15 +596,34 @@ export class GoogleSheetsService {
 
     try {
       // Secure call through server with Bearer auth header
-      const res = await authService.fetchWithAuth('/api/sheets/sync');
-      if (!res.ok && res.status !== 304) {
-        const errorJson = await res.json().catch(() => ({}));
-        throw new Error(errorJson.error || `HTTP ${res.status} при обращении к серверному прокси`);
+      let res: Response;
+      let is404OrFailed = false;
+
+      try {
+        res = await authService.fetchWithAuth('/api/sheets/sync');
+        if (res.status === 404) {
+          is404OrFailed = true;
+        }
+      } catch {
+        is404OrFailed = true;
       }
 
-      const data = await res.json();
+      if (is404OrFailed) {
+        console.info('Server proxy /api/sheets/sync not found or unreachable, performing direct client sync fallback...');
+        const directResult = await this.performClientDirectSync();
+        this.isSyncing = false;
+        this.notify();
+        return directResult;
+      }
+
+      if (!res!.ok && res!.status !== 304) {
+        const errorJson = await res!.json().catch(() => ({}));
+        throw new Error(safeErrorMessage(errorJson?.error, `HTTP ${res!.status} при обращении к серверному прокси`));
+      }
+
+      const data = await res!.json();
       if (!data || data.success === false) {
-        throw new Error(data?.error || 'Сервер не вернул данные');
+        throw new Error(safeErrorMessage(data?.error, 'Сервер не вернул данные'));
       }
 
       const contentProducts: ProductItem[] = data.contentProducts || [];
@@ -197,15 +648,9 @@ export class GoogleSheetsService {
       // Update storage and indexedDB
       storageService.saveProducts(allMergedProducts);
       storageService.saveTasks(tasks);
-      if (categoryGroups.length > 0) {
-        storageService.saveCategoryGroups(categoryGroups);
-      }
-      if (groupOrders.length > 0) {
-        storageService.saveGroupOrders(groupOrders);
-      }
-      if (contacts.length > 0) {
-        storageService.saveContacts(contacts);
-      }
+      if (categoryGroups.length > 0) storageService.saveCategoryGroups(categoryGroups);
+      if (groupOrders.length > 0) storageService.saveGroupOrders(groupOrders);
+      if (contacts.length > 0) storageService.saveContacts(contacts);
 
       // Preserve local new products
       const currentLocalNewProducts = storageService.getNewProducts();
@@ -263,25 +708,32 @@ export class GoogleSheetsService {
         source: data.source || 'Server Proxy',
       };
     } catch (err: any) {
-      console.error('Secure syncAll error:', err);
-      this.isSyncing = false;
-      this.notify();
-      return {
-        success: false,
-        contentCount: 0,
-        kamCount: 0,
-        tasksCount: 0,
-        groupsCount: 0,
-        newProductsCount: 0,
-        contactsCount: 0,
-        timestamp: this.lastSyncTime || '',
-        error: err.message || 'Ошибка синхронизации через сервер',
-      };
+      console.warn('Sync error, attempting direct client sync fallback:', err);
+      try {
+        const fallbackResult = await this.performClientDirectSync();
+        this.isSyncing = false;
+        this.notify();
+        return fallbackResult;
+      } catch (fallbackErr: any) {
+        this.isSyncing = false;
+        this.notify();
+        return {
+          success: false,
+          contentCount: 0,
+          kamCount: 0,
+          tasksCount: 0,
+          groupsCount: 0,
+          newProductsCount: 0,
+          contactsCount: 0,
+          timestamp: this.lastSyncTime || '',
+          error: safeErrorMessage(fallbackErr || err, 'Ошибка синхронизации данных'),
+        };
+      }
     }
   }
 
   /**
-   * Push product status updates through server proxy
+   * Push product status updates through server proxy or direct webhook
    */
   async pushProductStatusUpdate(
     files: string[],
@@ -306,59 +758,47 @@ export class GoogleSheetsService {
         }),
       });
 
+      if (res.status === 404 && this.webhookUrl) {
+        // Direct Webhook Fallback
+        const directRes = await fetch(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'updateStatus',
+            department,
+            files,
+            updates,
+            externalCodes,
+          }),
+        });
+        const data = await directRes.json();
+        if (data && data.success) {
+          this.updateLog(logId, 'success', `${details} — отправлено через Webhook напрямую`);
+          return true;
+        }
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
-        this.updateLog(logId, 'success', `${details} — отправлено через сервер в Google Sheets`);
+        this.updateLog(logId, 'success', `${details} — отправлено в Google Sheets`);
         return true;
       } else {
-        this.updateLog(logId, 'error', `${details} — ${data.error || 'ошибка сервера'}`);
+        this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(data?.error, 'ошибка сервера')}`);
         return false;
       }
     } catch (err: any) {
-      this.updateLog(logId, 'error', `${details} — ${err.message || 'ошибка сети'}`);
+      this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(err, 'ошибка сети')}`);
       return false;
     }
   }
 
   /**
-   * Push category group updates through server proxy
+   * Push single task (create / edit) through server proxy or direct webhook
    */
-  async pushGroupUpdate(group3: string, updates: Partial<CategoryGroup>): Promise<boolean> {
-    const title = `Обновление группы: ${group3}`;
-    const details = `Менеджер: ${updates.manager || '—'}, Файл КАМ: ${updates.kamFile || '—'}`;
-    const logId = this.addLog(title, details, 'pending');
-
-    try {
-      const res = await authService.fetchWithAuth('/api/sheets/push-group', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          group3,
-          updates,
-          webhookUrl: this.webhookUrl,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.updateLog(logId, 'success', `${details} — синхронизировано с Google Sheets`);
-        return true;
-      } else {
-        this.updateLog(logId, 'error', `${details} — ${data.error || 'ошибка сервера'}`);
-        return false;
-      }
-    } catch (err: any) {
-      this.updateLog(logId, 'error', `${details} — ${err.message || 'ошибка сети'}`);
-      return false;
-    }
-  }
-
-  /**
-   * Push task updates through server proxy
-   */
-  async pushTaskUpdate(task: TaskItem): Promise<boolean> {
-    const title = `Сохранение задачи: #${task.id} ${task.title}`;
-    const details = `Статус: ${task.status}, Срочность: ${task.urgency}`;
+  async pushTask(task: TaskItem): Promise<boolean> {
+    const isEdit = Boolean(task.id && task.id.length > 0 && !task.id.startsWith('temp-'));
+    const title = isEdit ? `Обновление задачи: ${task.title}` : `Создание задачи: ${task.title}`;
+    const details = `Исполнители: ${task.executors || 'Не назначены'}, Срочность: ${task.urgency}`;
     const logId = this.addLog(title, details, 'pending');
 
     try {
@@ -367,32 +807,47 @@ export class GoogleSheetsService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task,
-          action: 'updateTask',
+          action: isEdit ? 'updateTask' : 'createTask',
           webhookUrl: this.webhookUrl,
         }),
       });
 
+      if (res.status === 404 && this.webhookUrl) {
+        const directRes = await fetch(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: isEdit ? 'updateTask' : 'createTask',
+            task,
+          }),
+        });
+        const data = await directRes.json();
+        if (data && data.success) {
+          this.updateLog(logId, 'success', `${details} — сохранено через Webhook`);
+          return true;
+        }
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
-        this.updateLog(logId, 'success', `${details} — сохранено в Google Sheets`);
+        this.updateLog(logId, 'success', `${details} — записано в Google Sheets`);
         return true;
       } else {
-        this.updateLog(logId, 'error', `${details} — ${data.error || 'ошибка сервера'}`);
+        this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(data?.error, 'ошибка')}`);
         return false;
       }
     } catch (err: any) {
-      this.updateLog(logId, 'error', `${details} — ${err.message || 'ошибка сети'}`);
+      this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(err, 'ошибка сети')}`);
       return false;
     }
   }
 
   /**
-   * Push task deletion through server proxy
+   * Delete task through server proxy or direct webhook
    */
-  async pushTaskDelete(id: string): Promise<boolean> {
-    const title = `Удаление задачи: #${id}`;
-    const details = `Удалена из списка`;
-    const logId = this.addLog(title, details, 'pending');
+  async deleteTask(id: string): Promise<boolean> {
+    const details = `Удаление задачи ID: ${id}`;
+    const logId = this.addLog(`Удаление задачи`, details, 'pending');
 
     try {
       const res = await authService.fetchWithAuth('/api/sheets/push-task', {
@@ -405,16 +860,95 @@ export class GoogleSheetsService {
         }),
       });
 
+      if (res.status === 404 && this.webhookUrl) {
+        const directRes = await fetch(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'deleteTask',
+            taskId: id,
+          }),
+        });
+        const data = await directRes.json();
+        if (data && data.success) {
+          this.updateLog(logId, 'success', `${details} — удалено через Webhook`);
+          return true;
+        }
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
         this.updateLog(logId, 'success', `${details} — удалено из Google Sheets`);
         return true;
       } else {
-        this.updateLog(logId, 'error', `${details} — ${data.error || 'ошибка'}`);
+        this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(data?.error, 'ошибка')}`);
         return false;
       }
     } catch (err: any) {
-      this.updateLog(logId, 'error', `${details} — ${err.message || 'ошибка сети'}`);
+      this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(err, 'ошибка сети')}`);
+      return false;
+    }
+  }
+
+  /**
+   * Alias for pushTask for backwards compatibility
+   */
+  async pushTaskUpdate(task: TaskItem): Promise<boolean> {
+    return this.pushTask(task);
+  }
+
+  /**
+   * Alias for deleteTask for backwards compatibility
+   */
+  async pushTaskDelete(id: string): Promise<boolean> {
+    return this.deleteTask(id);
+  }
+
+  /**
+   * Push category group update through server proxy or direct webhook
+   */
+  async pushGroupUpdate(group3: string, updates: Partial<CategoryGroup>): Promise<boolean> {
+    const details = `Группа: ${group3}`;
+    const logId = this.addLog(`Обновление группы: ${group3}`, details, 'pending');
+
+    try {
+      const res = await authService.fetchWithAuth('/api/sheets/push-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group3,
+          updates,
+          webhookUrl: this.webhookUrl,
+        }),
+      });
+
+      if (res.status === 404 && this.webhookUrl) {
+        const directRes = await fetch(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'updateGroup',
+            group3,
+            updates,
+          }),
+        });
+        const data = await directRes.json();
+        if (data && data.success) {
+          this.updateLog(logId, 'success', `${details} — обновлено через Webhook`);
+          return true;
+        }
+      }
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.updateLog(logId, 'success', `${details} — обновлено в Google Sheets`);
+        return true;
+      } else {
+        this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(data?.error, 'ошибка')}`);
+        return false;
+      }
+    } catch (err: any) {
+      this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(err, 'ошибка сети')}`);
       return false;
     }
   }
@@ -450,6 +984,27 @@ export class GoogleSheetsService {
         }),
       });
 
+      if (res.status === 404 && this.webhookUrl) {
+        const directRes = await fetch(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'pushDepartmentProducts',
+            department,
+            products,
+          }),
+        });
+        const data = await directRes.json();
+        if (data && data.success) {
+          this.updateLog(logId, 'success', `${details} — выгружено через Webhook`);
+          return {
+            success: true,
+            message: `Успешно выгружено ${products.length} SKU через Webhook!`,
+            count: products.length,
+          };
+        }
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
         this.updateLog(logId, 'success', `${details} — выгружено в Google Sheets`);
@@ -459,18 +1014,18 @@ export class GoogleSheetsService {
           count: products.length,
         };
       } else {
-        this.updateLog(logId, 'error', `${details} — ${data.error || 'ошибка сервера'}`);
+        this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(data?.error, 'ошибка сервера')}`);
         return {
           success: false,
-          message: data.error || 'Ошибка при отправке в Google Sheets через сервер',
+          message: safeErrorMessage(data?.error, 'Ошибка при отправке в Google Sheets через сервер'),
           count: 0,
         };
       }
     } catch (err: any) {
-      this.updateLog(logId, 'error', `${details} — ${err.message || 'ошибка сети'}`);
+      this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(err, 'ошибка сети')}`);
       return {
         success: false,
-        message: err.message || 'Сетевая ошибка при отправке через сервер',
+        message: safeErrorMessage(err, 'Сетевая ошибка при отправке через сервер'),
         count: 0,
       };
     }
@@ -498,6 +1053,27 @@ export class GoogleSheetsService {
         }),
       });
 
+      if (res.status === 404 && this.webhookUrl) {
+        const directRes = await fetch(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'pushNewProductsBatch',
+            batchTitle: title,
+            items,
+          }),
+        });
+        const data = await directRes.json();
+        if (data && data.success) {
+          this.updateLog(logId, 'success', `${details} — записано через Webhook`);
+          return {
+            success: true,
+            message: `Успешно отправлено ${items.length} SKU в Google Таблицу через Webhook`,
+            count: items.length,
+          };
+        }
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
         this.updateLog(logId, 'success', `${details} — записано в лист «Новые товары»`);
@@ -507,26 +1083,23 @@ export class GoogleSheetsService {
           count: items.length,
         };
       } else {
-        this.updateLog(logId, 'error', `${details} — ${data.error || 'ошибка'}`);
+        this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(data?.error, 'ошибка')}`);
         return {
           success: false,
-          message: data.error || 'Ошибка при отправке в Google Sheets через сервер',
+          message: safeErrorMessage(data?.error, 'Ошибка при отправке в Google Sheets через сервер'),
           count: 0,
         };
       }
     } catch (err: any) {
-      this.updateLog(logId, 'error', `${details} — ${err.message || 'ошибка сети'}`);
+      this.updateLog(logId, 'error', `${details} — ${safeErrorMessage(err, 'ошибка сети')}`);
       return {
         success: false,
-        message: err.message || 'Сетевая ошибка при обращении к серверу',
+        message: safeErrorMessage(err, 'Сетевая ошибка при обращении к серверу'),
         count: 0,
       };
     }
   }
 
-  /**
-   * Push all new products batch alias
-   */
   async pushAllNewProducts(items: NewProductItem[], batchTitle?: string) {
     return this.pushNewProductsBatch(items, batchTitle);
   }

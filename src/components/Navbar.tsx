@@ -15,6 +15,7 @@ import { googleSheetsService, SyncResult } from '../services/googleSheetsService
 import { storageService } from '../services/storageService';
 import { authService } from '../services/authService';
 import { AuthUser } from '../types/auth';
+import { safeErrorMessage } from '../utils/errorUtils';
 
 export type MainTabType = 'products' | 'groups' | 'tasks' | 'analytics';
 
@@ -74,12 +75,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         if (onSyncComplete) onSyncComplete();
         setTimeout(() => setSyncStatus(null), 6000);
       } else {
-        setSyncStatus(`Ошибка синхронизации: ${result.error || 'проверьте сервер'}`);
+        setSyncStatus(`Ошибка синхронизации: ${safeErrorMessage(result.error, 'проверьте сервер')}`);
         setTimeout(() => setSyncStatus(null), 8000);
       }
     } catch (err: any) {
       setIsSyncing(false);
-      setSyncStatus(`Ошибка: ${err.message || 'не удалось выполнить синхронизацию'}`);
+      setSyncStatus(`Ошибка: ${safeErrorMessage(err, 'не удалось выполнить синхронизацию')}`);
       setTimeout(() => setSyncStatus(null), 8000);
     }
   };

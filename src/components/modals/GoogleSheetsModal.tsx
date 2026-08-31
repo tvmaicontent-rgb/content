@@ -17,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { SPREADSHEET_URL, KAM_SPREADSHEET_URL } from '../../constants';
+import { safeErrorMessage } from '../../utils/errorUtils';
 
 interface GoogleSheetsModalProps {
   isOpen: boolean;
@@ -74,7 +75,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       setSyncStatus(`Успешно загружено: ${res.contentCount + res.kamCount} товаров, ${res.tasksCount} задач, ${res.groupsCount} групп`);
       if (onSyncComplete) onSyncComplete();
     } else {
-      setSyncStatus(`Ошибка: ${res.error || 'Не удалось синхронизировать'}`);
+      setSyncStatus(`Ошибка: ${safeErrorMessage(res.error, 'Не удалось синхронизировать')}`);
     }
     setTimeout(() => setSyncStatus(null), 6000);
   };
@@ -487,7 +488,7 @@ function handleRequest(data) {
       isOpen={isOpen}
       onClose={onClose}
       title="🔗 Связь с Google Таблицами (Двусторонняя синхронизация)"
-      maxWidth="max-w-3xl"
+      maxWidth="4xl"
     >
       <div className="space-y-5">
         {/* Status Bar */}

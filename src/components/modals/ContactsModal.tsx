@@ -7,6 +7,7 @@ import { CONTACTS_SPREADSHEET_URL } from '../../constants';
 import { exportToExcel } from '../../services/excelService';
 import { SortHeader } from '../common/SortHeader';
 import { SortConfig, sortData } from '../../utils/sortUtils';
+import { safeErrorMessage } from '../../utils/errorUtils';
 import { Search, Plus, Save, Trash2, Download, ExternalLink, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 interface ContactsModalProps {
@@ -58,7 +59,7 @@ export const ContactsModal: React.FC<ContactsModalProps> = ({ isOpen, onClose })
       setSyncStatus(`Синхронизировано ${res.contactsCount || storageService.getContacts().length} контактов!`);
       setTimeout(() => setSyncStatus(null), 4000);
     } else {
-      setSyncStatus(`Ошибка: ${res.error || 'не удалось синхронизировать'}`);
+      setSyncStatus(`Ошибка: ${safeErrorMessage(res.error, 'не удалось синхронизировать')}`);
       setTimeout(() => setSyncStatus(null), 5000);
     }
   };

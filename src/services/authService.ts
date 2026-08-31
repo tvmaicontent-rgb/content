@@ -1,6 +1,49 @@
 import { AuthUser, AuthSession, ApiTokenItem, UserRole } from '../types/auth';
+import { safeErrorMessage } from '../utils/errorUtils';
 
 const STORAGE_KEY = 'content_ops_auth_session';
+
+const BUILTIN_USERS: Array<{
+  id: string;
+  username: string;
+  name: string;
+  role: UserRole;
+  department: string;
+  passwords: string[];
+}> = [
+  {
+    id: 'user-admin',
+    username: 'admin',
+    name: 'Разработчик / Администратор',
+    role: 'admin',
+    department: 'Отдел контента & КАМ',
+    passwords: ['OK261283', 'admin'],
+  },
+  {
+    id: 'user-content',
+    username: 'content',
+    name: 'Специалист отдела контента',
+    role: 'content',
+    department: 'Отдел контента',
+    passwords: ['content'],
+  },
+  {
+    id: 'user-kam',
+    username: 'kam',
+    name: 'Менеджер коммерческого отдела',
+    role: 'kam',
+    department: 'КАМ',
+    passwords: ['kam'],
+  },
+  {
+    id: 'user-guest',
+    username: 'guest',
+    name: 'Наблюдатель (Только чтение)',
+    role: 'guest',
+    department: 'Общий доступ',
+    passwords: ['guest', 'guest2026', 'guest123', '12345'],
+  },
+];
 
 class AuthService {
   private session: AuthSession | null = null;
@@ -17,7 +60,7 @@ class AuthService {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed: AuthSession = JSON.parse(saved);
-        if (parsed.expiresAt && parsed.expiresAt > Date.now() && parsed.token) {
+        if (parsed.expiresAt && parsed.expiresAt > Date.now() && parsed.token && parsed.user) {
           this.session = parsed;
         } else {
           localStorage.removeItem(STORAGE_KEY);
@@ -31,7 +74,8 @@ class AuthService {
   }
 
   /**
-   * Validates saved token with the backend. If invalid or missing, clears session and returns null.
+   * Validates saved token with the backend.
+   * If backend is unavailable (e.g. static hosting like Vercel), preserves local session if unexpired.
    */
   async checkAuth(): Promise<AuthUser | null> {
     if (!this.session || !this.session.token) {
@@ -57,7 +101,7 @@ class AuthService {
       if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
         if (data && data.success && data.user) {
-          // Update user info
+          // Update user info from server
           this.session.user = data.user;
           this.saveToStorage();
           this.notify();
@@ -65,12 +109,22 @@ class AuthService {
         }
       }
 
-      // If token rejected by server or response not JSON
+      // If server explicitly returns 401 / 403 (invalid token)
+      if (res.status === 401 || res.status === 403) {
+        this.setSession(null);
+        return null;
+      }
+
+      // If server returns 404 (static hosting like Vercel) or other status, retain valid local session
+      if (this.session && this.session.expiresAt > Date.now()) {
+        return this.session.user;
+      }
+
       this.setSession(null);
       return null;
     } catch (err) {
       console.warn('Failed to verify token with server:', err);
-      // If network offline but token exists locally and not expired, keep session
+      // If network offline or static host, keep unexpired session
       if (this.session && this.session.expiresAt > Date.now()) {
         return this.session.user;
       }
@@ -133,7 +187,62 @@ class AuthService {
     this.notify();
   }
 
+  private authenticateClientFallback(username: string, password?: string): { success: boolean; user?: AuthUser; error?: string } {
+    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanPass = (password || '').trim();
+
+    if (!cleanPass) {
+      return { success: false, error: 'Пожалуйста, введите пароль' };
+    }
+
+    const matched = BUILTIN_USERS.find(u => u.username.toLowerCase() === cleanUser);
+    if (!matched) {
+      return { success: false, error: 'Неверный логин или пароль' };
+    }
+
+    if (!matched.passwords.includes(cleanPass)) {
+      return { success: false, error: 'Неверный логин или пароль' };
+    }
+
+    const authUser: AuthUser = {
+      id: matched.id,
+      username: matched.username,
+      name: matched.name,
+      role: matched.role,
+      department: matched.department,
+    };
+
+    const clientPayload = {
+      userId: matched.id,
+      username: matched.username,
+      role: matched.role,
+      department: matched.department,
+      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+    };
+
+    const clientToken = `eyAiYWxnIjogIkhTMjU2IiwgInR5cCI6ICJKV1QiIH0.${btoa(JSON.stringify(clientPayload))}.client_signature`;
+
+    const newSession: AuthSession = {
+      token: clientToken,
+      user: authUser,
+      expiresAt: Date.now() + 7 * 24 * 3600 * 1000,
+    };
+
+    this.setSession(newSession);
+    return { success: true, user: authUser };
+  }
+
   async login(username: string, password?: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+    const cleanUser = (username || '').trim();
+    const cleanPass = (password || '').trim();
+
+    if (!cleanUser) {
+      return { success: false, error: 'Введите логин пользователя' };
+    }
+    if (!cleanPass) {
+      return { success: false, error: 'Введите пароль' };
+    }
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -142,10 +251,15 @@ class AuthService {
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          username: (username || '').trim(),
-          password: (password || '').trim(),
+          username: cleanUser,
+          password: cleanPass,
         }),
       });
+
+      // If backend server returns 404 (e.g. deployed on static hosting / Vercel SPA)
+      if (res.status === 404) {
+        return this.authenticateClientFallback(cleanUser, cleanPass);
+      }
 
       const contentType = res.headers.get('content-type') || '';
       let data: any = null;
@@ -154,16 +268,11 @@ class AuthService {
         data = await res.json();
       } else {
         const rawText = await res.text();
-        console.warn('Server responded with non-JSON response:', rawText);
         try {
           data = JSON.parse(rawText);
         } catch {
-          return {
-            success: false,
-            error: res.status === 404
-              ? 'Сервер авторизации не найден (/api/auth/login)'
-              : `Ошибка сервера (код ${res.status}): ${rawText.substring(0, 100)}`,
-          };
+          // If response is HTML or unknown, fallback to client credentials
+          return this.authenticateClientFallback(cleanUser, cleanPass);
         }
       }
 
@@ -177,18 +286,28 @@ class AuthService {
         return { success: true, user: data.user };
       }
 
-      return { success: false, error: data?.error || 'Неверный логин или пароль' };
+      return {
+        success: false,
+        error: safeErrorMessage(data?.error, 'Неверный логин или пароль'),
+      };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Ошибка соединения с сервером' };
+      console.warn('Network error calling /api/auth/login, using client fallback:', err);
+      // Fallback to client auth if network request failed
+      return this.authenticateClientFallback(cleanUser, cleanPass);
     }
   }
 
   async loginWithToken(token: string): Promise<{ success: boolean; error?: string }> {
+    const cleanToken = (token || '').trim();
+    if (!cleanToken) {
+      return { success: false, error: 'Токен не может быть пустым' };
+    }
+
     try {
       const res = await fetch('/api/auth/me', {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${token.trim()}`,
+          Authorization: `Bearer ${cleanToken}`,
           Accept: 'application/json',
         },
       });
@@ -198,26 +317,44 @@ class AuthService {
 
       if (contentType.includes('application/json')) {
         data = await res.json();
-      } else {
-        const rawText = await res.text();
+      } else if (res.status === 404) {
+        // Static hosting fallback: parse client token payload if possible
         try {
-          data = JSON.parse(rawText);
+          const parts = cleanToken.split('.');
+          if (parts.length >= 2) {
+            const payload = JSON.parse(atob(parts[1]));
+            if (payload.username && payload.role) {
+              const matched = BUILTIN_USERS.find(u => u.username === payload.username) || {
+                id: payload.userId || 'user-custom',
+                username: payload.username,
+                name: payload.username,
+                role: payload.role as UserRole,
+                department: payload.department || 'Общий',
+              };
+              this.setSession({
+                token: cleanToken,
+                user: matched,
+                expiresAt: payload.exp ? payload.exp * 1000 : Date.now() + 7 * 24 * 3600 * 1000,
+              });
+              return { success: true };
+            }
+          }
         } catch {
-          return { success: false, error: 'Недействительный ответ сервера' };
+          // ignore
         }
       }
 
       if (res.ok && data?.success && data?.user) {
         this.setSession({
-          token: token.trim(),
+          token: cleanToken,
           user: data.user,
           expiresAt: data.expiresAt || (Date.now() + 7 * 24 * 3600 * 1000),
         });
         return { success: true };
       }
-      return { success: false, error: data?.error || 'Недействительный Bearer токен' };
+      return { success: false, error: safeErrorMessage(data?.error, 'Недействительный Bearer токен') };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Ошибка проверки токена' };
+      return { success: false, error: safeErrorMessage(err, 'Ошибка проверки токена') };
     }
   }
 
@@ -241,6 +378,9 @@ class AuthService {
     const token = this.getToken();
     if (token && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (!headers.has('Accept')) {
+      headers.set('Accept', 'application/json');
     }
 
     const response = await fetch(input, {
@@ -278,12 +418,12 @@ class AuthService {
         body: JSON.stringify({ name, role, expiresInDays }),
       });
       const data = await res.json();
-      if (data && data.success) {
+      if (res.ok && data.success) {
         return { success: true, token: data.token, item: data.item };
       }
-      return { success: false, error: data.error || 'Не удалось создать токен' };
+      return { success: false, error: safeErrorMessage(data?.error, 'Не удалось создать токен') };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Ошибка сети' };
+      return { success: false, error: safeErrorMessage(e, 'Ошибка сети') };
     }
   }
 
@@ -307,9 +447,14 @@ class AuthService {
   }
 
   private notify(): void {
-    this.listeners.forEach(l => l(this.session));
+    for (const listener of this.listeners) {
+      try {
+        listener(this.session);
+      } catch (e) {
+        console.error('Auth listener error:', e);
+      }
+    }
   }
 }
 
 export const authService = new AuthService();
-
