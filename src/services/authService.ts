@@ -49,10 +49,12 @@ class AuthService {
       const res = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${this.session.token}`,
+          Accept: 'application/json',
         },
       });
 
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
         if (data && data.success && data.user) {
           // Update user info
@@ -63,7 +65,7 @@ class AuthService {
         }
       }
 
-      // If token rejected by server
+      // If token rejected by server or response not JSON
       this.setSession(null);
       return null;
     } catch (err) {
@@ -135,15 +137,37 @@ class AuthService {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: JSON.stringify({
           username: (username || '').trim(),
           password: (password || '').trim(),
         }),
       });
 
-      const data = await res.json();
-      if (res.ok && data.success && data.token) {
+      const contentType = res.headers.get('content-type') || '';
+      let data: any = null;
+
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const rawText = await res.text();
+        console.warn('Server responded with non-JSON response:', rawText);
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          return {
+            success: false,
+            error: res.status === 404
+              ? 'Сервер авторизации не найден (/api/auth/login)'
+              : `Ошибка сервера (код ${res.status}): ${rawText.substring(0, 100)}`,
+          };
+        }
+      }
+
+      if (res.ok && data?.success && data?.token) {
         const newSession: AuthSession = {
           token: data.token,
           user: data.user,
@@ -153,7 +177,7 @@ class AuthService {
         return { success: true, user: data.user };
       }
 
-      return { success: false, error: data.error || 'Неверный логин или пароль' };
+      return { success: false, error: data?.error || 'Неверный логин или пароль' };
     } catch (err: any) {
       return { success: false, error: err.message || 'Ошибка соединения с сервером' };
     }
@@ -165,10 +189,25 @@ class AuthService {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token.trim()}`,
+          Accept: 'application/json',
         },
       });
-      const data = await res.json();
-      if (res.ok && data.success && data.user) {
+
+      const contentType = res.headers.get('content-type') || '';
+      let data: any = null;
+
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const rawText = await res.text();
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          return { success: false, error: 'Недействительный ответ сервера' };
+        }
+      }
+
+      if (res.ok && data?.success && data?.user) {
         this.setSession({
           token: token.trim(),
           user: data.user,
@@ -176,7 +215,7 @@ class AuthService {
         });
         return { success: true };
       }
-      return { success: false, error: data.error || 'Недействительный Bearer токен' };
+      return { success: false, error: data?.error || 'Недействительный Bearer токен' };
     } catch (err: any) {
       return { success: false, error: err.message || 'Ошибка проверки токена' };
     }

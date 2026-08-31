@@ -43,12 +43,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleQuickSelect = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setError(null);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#d8eaf8] via-[#eaf3fb] to-[#f6f9fc] flex items-center justify-center p-4 selection:bg-sky-200 selection:text-sky-900">
       <div className="w-full max-w-md">
@@ -148,62 +142,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 )}
               </button>
             </form>
-
-            {/* Quick Role Fillers for ease of use */}
-            <div className="mt-6 pt-5 border-t border-slate-100">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
-                Быстрый выбор учетной записи:
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickSelect('admin', 'OK261283')}
-                  className="p-2.5 text-left rounded-xl border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 bg-slate-50/70 transition-all text-xs group cursor-pointer"
-                >
-                  <div className="font-bold text-slate-800 flex items-center justify-between">
-                    <span>🛡️ admin</span>
-                    <span className="text-[10px] text-slate-400 font-mono">OK261283</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 truncate mt-0.5">Администратор</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleQuickSelect('content', 'content')}
-                  className="p-2.5 text-left rounded-xl border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 bg-slate-50/70 transition-all text-xs group cursor-pointer"
-                >
-                  <div className="font-bold text-slate-800 flex items-center justify-between">
-                    <span>🎨 content</span>
-                    <span className="text-[10px] text-slate-400 font-mono">content</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 truncate mt-0.5">Отдел контента</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleQuickSelect('kam', 'kam')}
-                  className="p-2.5 text-left rounded-xl border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 bg-slate-50/70 transition-all text-xs group cursor-pointer"
-                >
-                  <div className="font-bold text-slate-800 flex items-center justify-between">
-                    <span>💼 kam</span>
-                    <span className="text-[10px] text-slate-400 font-mono">kam</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 truncate mt-0.5">Коммерческий отдел</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleQuickSelect('guest', 'guest')}
-                  className="p-2.5 text-left rounded-xl border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 bg-slate-50/70 transition-all text-xs group cursor-pointer"
-                >
-                  <div className="font-bold text-slate-800 flex items-center justify-between">
-                    <span>👁️ guest</span>
-                    <span className="text-[10px] text-slate-400 font-mono">guest</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 truncate mt-0.5">Наблюдатель</div>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
