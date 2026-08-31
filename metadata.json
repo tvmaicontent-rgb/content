@@ -1,0 +1,8 @@
+{
+  "name": "Remix Панель управления отдела контента",
+  "description": "Система управления товарами, выводами групп, задачами и контактами поставщиков для отдела контента и КАМ",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
