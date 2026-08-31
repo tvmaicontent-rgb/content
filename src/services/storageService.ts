@@ -12,9 +12,11 @@ import { calculateBusinessDays, getManagerForCategory, getCategoryHierarchy } fr
 import initialProductsData from '../data/initialProducts.json';
 import initialTasksData from '../data/initialTasks.json';
 import initialGroupsData from '../data/initialGroups.json';
+import initialGroupOrdersData from '../data/initialGroupOrders.json';
 import initialNewProductsData from '../data/initialNewProducts.json';
 import initialContactsData from '../data/initialContacts.json';
 import { idb } from './indexedDbService';
+import { googleSheetsService } from './googleSheetsService';
 
 // Initial Supplier Contacts Seed
 const SEED_CONTACTS: SupplierContact[] = [
@@ -65,9 +67,8 @@ const SEED_GROUP_ORDERS: GroupOrderItem[] = [
   { id: '6', position: 6, groupName: 'Светодиодные ленты', section: 'LED компоненты', status: 'Активна', comment: '12V/24V' },
 ];
 
-const initialGroupsList = (initialGroupsData as unknown as CategoryGroup[]) || [];
 const initialGroupsLookup = new Map<string, CategoryGroup>();
-initialGroupsList.forEach(ig => {
+((initialGroupsData as unknown as CategoryGroup[]) || []).forEach(ig => {
   if (ig.group3) {
     initialGroupsLookup.set(ig.group3.trim().toLowerCase(), ig);
   }
@@ -105,18 +106,9 @@ function sanitizeCategoryGroups(groups: CategoryGroup[]): CategoryGroup[] {
       manager = snapshotGroup.manager;
     }
 
-    if (manager === 'Волчёк') {
-      manager = 'Волчек';
-    }
-
-    let kamFile = (g.kamFile || '').trim();
-    if (kamFile.toLowerCase() === 'не добавлено') kamFile = 'Не добавлено';
-    if (kamFile.toLowerCase() === 'добавлено') kamFile = 'Добавлено';
-    if (kamFile.toLowerCase() === 'нет товаров') kamFile = 'Нет товаров';
-    if (kamFile.toLowerCase() === 'только группа') kamFile = 'Только группа';
-
-    if (!kamFile && snapshotGroup && snapshotGroup.kamFile) {
-      kamFile = snapshotGroup.kamFile;
+    let kamFile = g.kamFile;
+    if ((!kamFile || kamFile === '—' || kamFile === '-') && snapshotGroup && snapshotGroup.kamFile === 'Добавлено') {
+      kamFile = 'Добавлено';
     }
 
     return {
@@ -135,7 +127,7 @@ let memoryTasks: TaskItem[] = initialTasksData as unknown as TaskItem[];
 let memoryGroups: CategoryGroup[] = sanitizeCategoryGroups(initialGroupsData as unknown as CategoryGroup[]);
 let memoryContacts: SupplierContact[] = initialContactsData as unknown as SupplierContact[];
 let memoryNewProducts: NewProductItem[] = initialNewProductsData as unknown as NewProductItem[];
-let memoryGroupOrders: GroupOrderItem[] = SEED_GROUP_ORDERS;
+let memoryGroupOrders: GroupOrderItem[] = (initialGroupOrdersData as unknown as GroupOrderItem[]) || [];
 
 // Subscribers
 type StorageListener = () => void;
@@ -157,18 +149,18 @@ let initPromise: Promise<void> | null = null;
 async function initFromStorage(): Promise<void> {
   if (isInitialized || typeof window === 'undefined') return;
   try {
-    const [dbProducts, dbTasks, dbGroups, dbContacts, dbNewProducts] = await Promise.all([
+    const [dbProducts, dbTasks, dbGroups, dbContacts, dbNewProducts, dbGroupOrders] = await Promise.all([
       idb.getAll<ProductItem>('products'),
       idb.getAll<TaskItem>('tasks'),
       idb.getAll<CategoryGroup>('groups'),
       idb.getAll<SupplierContact>('contacts'),
       idb.getAll<NewProductItem>('newProducts'),
+      idb.getAll<GroupOrderItem>('groupOrders'),
     ]);
 
     if (dbProducts && dbProducts.length > 0) {
       memoryProducts = dbProducts;
     } else {
-      // Seed IndexedDB with initial products if empty
       idb.setAll('products', memoryProducts).catch(() => {});
     }
 
@@ -178,10 +170,9 @@ async function initFromStorage(): Promise<void> {
       idb.setAll('tasks', memoryTasks).catch(() => {});
     }
 
-    if (dbGroups && dbGroups.length > 0 && dbGroups.length === initialGroupsList.length) {
+    if (dbGroups && dbGroups.length > 0) {
       memoryGroups = sanitizeCategoryGroups(dbGroups);
     } else {
-      memoryGroups = sanitizeCategoryGroups(initialGroupsList);
       idb.setAll('groups', memoryGroups).catch(() => {});
     }
 
@@ -194,11 +185,42 @@ async function initFromStorage(): Promise<void> {
     if (dbNewProducts && dbNewProducts.length > 0) {
       memoryNewProducts = dbNewProducts;
     } else {
+      // Try fallback from localStorage backup
+      try {
+        const lsNp = localStorage.getItem('CONTENT_OPS_NEW_PRODUCTS_V1');
+        if (lsNp) {
+          const parsed = JSON.parse(lsNp);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            memoryNewProducts = parsed;
+          }
+        }
+      } catch {
+        // ignore
+      }
       idb.setAll('newProducts', memoryNewProducts).catch(() => {});
+    }
+
+    if (dbGroupOrders && dbGroupOrders.length > 0) {
+      memoryGroupOrders = dbGroupOrders;
+    } else {
+      idb.setAll('groupOrders', memoryGroupOrders).catch(() => {});
     }
 
     isInitialized = true;
     notifySubscribers();
+
+    // Trigger initial background sync from Google Sheets live CSVs
+    setTimeout(() => {
+      googleSheetsService.syncAll().then(res => {
+        if (res.success) {
+          console.log(`[Google Sheets] Auto-synced on startup: ${res.contentCount + res.kamCount} products, ${res.tasksCount} tasks, ${res.groupsCount} groups.`);
+        }
+      }).catch(err => {
+        console.warn('[Google Sheets] Startup sync error:', err);
+      });
+      // Start periodic sync every 3 minutes
+      googleSheetsService.startAutoSync(3);
+    }, 500);
   } catch (e) {
     console.warn('Init from IndexedDB fallback:', e);
     isInitialized = true;
@@ -267,6 +289,11 @@ export const storageService = {
     });
 
     this.saveProducts(updated);
+
+    // Push two-way update to Google Sheets via Webhook
+    googleSheetsService.pushProductStatusUpdate(sourceFiles, department, updates).catch(err => {
+      console.warn('[Google Sheets] Push status error:', err);
+    });
   },
 
   // CONTACTS
@@ -298,6 +325,13 @@ export const storageService = {
   saveNewProducts(items: NewProductItem[]): void {
     memoryNewProducts = items;
     idb.setAll('newProducts', items).catch(() => {});
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('CONTENT_OPS_NEW_PRODUCTS_V1', JSON.stringify(items.slice(0, 15000)));
+      }
+    } catch (e) {
+      console.warn('localStorage backup failed:', e);
+    }
     this.notify();
   },
 
@@ -373,6 +407,12 @@ export const storageService = {
     return memoryGroupOrders;
   },
 
+  saveGroupOrders(orders: GroupOrderItem[]): void {
+    memoryGroupOrders = orders;
+    idb.setAll('groupOrders', orders).catch(() => {});
+    this.notify();
+  },
+
   // TASKS
   getTasks(): TaskItem[] {
     return memoryTasks;
@@ -397,6 +437,7 @@ export const storageService = {
       updatedAt: dateStr,
     };
     this.saveTasks([...tasks, newTask]);
+    googleSheetsService.pushTaskUpdate(newTask).catch(() => {});
     return newTask;
   },
 
@@ -405,8 +446,18 @@ export const storageService = {
     const now = new Date();
     const dateStr = `${String(now.getDate()).padStart(2, '0')}.${String(now.getMonth() + 1).padStart(2, '0')}.${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const updated = tasks.map(t => (t.id === id ? { ...t, ...updates, updatedAt: dateStr } : t));
+    let updatedItem: TaskItem | null = null;
+    const updated = tasks.map(t => {
+      if (t.id === id) {
+        updatedItem = { ...t, ...updates, updatedAt: dateStr };
+        return updatedItem;
+      }
+      return t;
+    });
     this.saveTasks(updated);
+    if (updatedItem) {
+      googleSheetsService.pushTaskUpdate(updatedItem).catch(() => {});
+    }
   },
 
   deleteTask(id: string): void {
@@ -414,6 +465,7 @@ export const storageService = {
     const filtered = tasks.filter(t => t.id !== id);
     const reindexed = filtered.map((t, idx) => ({ ...t, id: String(idx + 1) }));
     this.saveTasks(reindexed);
+    googleSheetsService.pushTaskDelete(id).catch(() => {});
   },
 
   // BUILD SUMMARY (identical to Python script build_summary logic)

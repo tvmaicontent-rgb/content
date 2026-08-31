@@ -89,6 +89,9 @@ export interface GroupOrderItem {
   section: string;
   status: string;
   comment?: string;
+  group1?: string;
+  group2?: string;
+  group3?: string;
 }
 
 export type TaskStatus = 'Новая' | 'В работе' | 'Завершена';

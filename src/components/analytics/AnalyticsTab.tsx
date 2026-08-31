@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { storageService } from '../../services/storageService';
 import { exportAnalyticsReportToExcel } from '../../services/excelService';
-import { ProductItem, DepartmentType } from '../../types';
-import { SPREADSHEET_URL, KAM_SPREADSHEET_URL, TASKS_SPREADSHEET_URL } from '../../constants';
+import { ProductItem, DepartmentType, CategoryGroup } from '../../types';
+import { SPREADSHEET_URL, KAM_SPREADSHEET_URL, TASKS_SPREADSHEET_URL, GROUPS_SPREADSHEET_URL, SITE_ORDER_SPREADSHEET_URL } from '../../constants';
+import { GroupsMonthlyTrendCard } from './GroupsMonthlyTrendCard';
 import { SortHeader } from '../common/SortHeader';
 import { SortConfig, sortData } from '../../utils/sortUtils';
 import { Modal } from '../common/Modal';
@@ -198,13 +199,16 @@ export const AnalyticsTab: React.FC = () => {
     showToast(`Ссылка на ${label} скопирована в буфер обмена`);
   };
 
-  // Load all products with reactive subscription
+  // Load all products and category groups with reactive subscription
   const [allProducts, setAllProducts] = useState<ProductItem[]>(() => storageService.getProducts());
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>(() => storageService.getCategoryGroups());
 
   React.useEffect(() => {
     setAllProducts(storageService.getProducts());
+    setCategoryGroups(storageService.getCategoryGroups());
     const unsub = storageService.subscribe(() => {
       setAllProducts(storageService.getProducts());
+      setCategoryGroups(storageService.getCategoryGroups());
     });
     return () => unsub();
   }, []);
@@ -1601,6 +1605,9 @@ export const AnalyticsTab: React.FC = () => {
         )}
       </div>
 
+      {/* 5. NEW: Groups Monthly Dynamics & Linear Trend Card */}
+      <GroupsMonthlyTrendCard groups={categoryGroups} />
+
       {/* Modal 1: Details of Completed Files for Selected Period */}
       <Modal
         isOpen={isCompletedFilesModalOpen}
@@ -1769,6 +1776,64 @@ export const AnalyticsTab: React.FC = () => {
                     target="_blank"
                     rel="noreferrer"
                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold flex items-center gap-1 shadow-2xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Открыть</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Groups Output Sheet */}
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-bold text-emerald-950">Таблица Вывода групп (GID 0)</div>
+                  <div className="text-[11px] text-emerald-700 font-mono truncate max-w-[320px]">
+                    {GROUPS_SPREADSHEET_URL}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(GROUPS_SPREADSHEET_URL, 'Вывод групп')}
+                    className="p-2 bg-white hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-200 transition-colors"
+                    title="Скопировать ссылку"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                  <a
+                    href={GROUPS_SPREADSHEET_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1 shadow-2xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Открыть</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Site Order Sheet */}
+              <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-bold text-purple-950">Таблица Порядок на сайте (GID 442661295)</div>
+                  <div className="text-[11px] text-purple-700 font-mono truncate max-w-[320px]">
+                    {SITE_ORDER_SPREADSHEET_URL}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(SITE_ORDER_SPREADSHEET_URL, 'Порядок на сайте')}
+                    className="p-2 bg-white hover:bg-purple-100 text-purple-800 rounded-lg border border-purple-200 transition-colors"
+                    title="Скопировать ссылку"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                  <a
+                    href={SITE_ORDER_SPREADSHEET_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold flex items-center gap-1 shadow-2xs"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Открыть</span>

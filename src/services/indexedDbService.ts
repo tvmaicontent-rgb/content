@@ -1,7 +1,7 @@
 /**
  * IndexedDB storage utility for large datasets (30,000+ products)
  */
-const DB_NAME = 'ContentOpsDB_v2';
+const DB_NAME = 'ContentOpsDB_v4';
 const DB_VERSION = 1;
 
 export interface DBStores {
@@ -10,6 +10,7 @@ export interface DBStores {
   groups: 'groups';
   contacts: 'contacts';
   newProducts: 'newProducts';
+  groupOrders: 'groupOrders';
   metadata: 'metadata';
 }
 
@@ -43,6 +44,9 @@ class IndexedDBManager {
         }
         if (!db.objectStoreNames.contains('newProducts')) {
           db.createObjectStore('newProducts', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('groupOrders')) {
+          db.createObjectStore('groupOrders', { keyPath: 'id' });
         }
         if (!db.objectStoreNames.contains('metadata')) {
           db.createObjectStore('metadata', { keyPath: 'key' });

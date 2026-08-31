@@ -243,6 +243,48 @@ app.get('/api/sync-sheets', async (req, res) => {
   }
 });
 
+app.post('/api/sheets/webhook-proxy', async (req, res) => {
+  try {
+    const { webhookUrl, payload } = req.body || {};
+    const url = (webhookUrl || process.env.GOOGLE_SHEETS_WEBHOOK_URL || '').trim();
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'Webhook URL not provided' });
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+      redirect: 'follow',
+    });
+
+    const text = await response.text();
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // If response is HTML, it often means Google login redirect / permission denied
+      if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('Google Accounts')) {
+        return res.status(403).json({
+          success: false,
+          error: 'Google Apps Script вернул страницу авторизации. Проверьте развертывание скрипта: в поле «У кого есть доступ» (Who has access) обязательно выберите «Все» (Anyone).',
+          isAuthHtml: true,
+        });
+      }
+      data = { raw: text, success: false, error: text.slice(0, 200) };
+    }
+
+    if (data && data.success === false) {
+      return res.status(400).json(data);
+    }
+
+    res.json({ success: true, ...data });
+  } catch (err: any) {
+    console.error('Webhook proxy error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Webhook request failed' });
+  }
+});
+
 app.get('/api/data-snapshot', (req, res) => {
   if (cachedData) {
     return res.json(cachedData);

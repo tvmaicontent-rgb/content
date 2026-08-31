@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CategoryGroup, GroupOrderItem } from '../../types';
 import { storageService } from '../../services/storageService';
+import { googleSheetsService } from '../../services/googleSheetsService';
 import { MANAGERS_LIST } from '../../constants';
 import { GroupEditorModal } from './GroupEditorModal';
 import { BulkAddGroupsModal } from './BulkAddGroupsModal';
@@ -134,19 +135,6 @@ export const GroupsTab: React.FC = () => {
     ).sort((a, b) => a.localeCompare(b, 'ru'));
   }, [groups]);
 
-  // Dynamic Managers list for filtering based on actual groups
-  const managerOptions = useMemo(() => {
-    const fromGroups = Array.from(
-      new Set<string>(groups.map(g => (g.manager || '').trim()).filter((v): v is string => Boolean(v)))
-    );
-    const codeMap = new Map<string, string>();
-    MANAGERS_LIST.forEach(m => codeMap.set(m.name.toLowerCase(), m.code));
-    return fromGroups.sort((a, b) => a.localeCompare(b, 'ru')).map(name => ({
-      name,
-      code: codeMap.get(name.toLowerCase()) || '',
-    }));
-  }, [groups]);
-
   const filterList = (list: CategoryGroup[]) => {
     let res = list;
     if (managerFilter !== 'all') {
@@ -208,19 +196,29 @@ export const GroupsTab: React.FC = () => {
 
   // Save single group updates immediately to state and persistence
   const updateSingleGroup = (id: string, updates: Partial<CategoryGroup>) => {
+    const target = groups.find(g => g.id === id);
     const updated = groups.map(g => (g.id === id ? { ...g, ...updates } : g));
     setGroups(updated);
     storageService.saveCategoryGroups(updated);
     showToast('Изменения сохранены');
+
+    if (target) {
+      googleSheetsService.pushGroupUpdate(target.group3, updates).catch(console.error);
+    }
   };
 
   // Mass update selected groups
   const handleMassUpdate = (updates: Partial<CategoryGroup>) => {
     if (selectedIds.size === 0) return;
+    const selectedGroups = groups.filter(g => selectedIds.has(g.id));
     const updated = groups.map(g => (selectedIds.has(g.id) ? { ...g, ...updates } : g));
     setGroups(updated);
     storageService.saveCategoryGroups(updated);
     showToast(`Обновлено ${selectedIds.size} групп`);
+
+    selectedGroups.forEach(g => {
+      googleSheetsService.pushGroupUpdate(g.group3, updates).catch(console.error);
+    });
   };
 
   // Mass delete selected groups
@@ -534,10 +532,10 @@ export const GroupsTab: React.FC = () => {
                 }}
                 className="px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-xl bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
               >
-                <option value="all">Все менеджеры ({managerOptions.length})</option>
-                {managerOptions.map(m => (
-                  <option key={m.name} value={m.name}>
-                    {m.name} {m.code ? `(${m.code})` : ''}
+                <option value="all">Все менеджеры</option>
+                {MANAGERS_LIST.map(m => (
+                  <option key={m.code} value={m.name}>
+                    {m.name} ({m.code})
                   </option>
                 ))}
               </select>
