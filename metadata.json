@@ -1,6 +1,0 @@
-{
-  "name": "Отдел контента",
-  "description": "Система управления товарами, выводами групп, задачами и аналитикой для отдела контента и КАМ",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
