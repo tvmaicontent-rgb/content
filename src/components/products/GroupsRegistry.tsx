@@ -19,6 +19,7 @@ export const GroupsRegistry: React.FC<GroupsRegistryProps> = ({
   const [showCompleted, setShowCompleted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+
   const [sortConfig, setSortConfig] = useState<SortConfig<FileGroupSummary>>({
     key: '',
     direction: null,
@@ -109,18 +110,20 @@ export const GroupsRegistry: React.FC<GroupsRegistryProps> = ({
           </div>
         </div>
 
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Поиск по файлу, группе, исполнителю..."
-            value={searchQuery}
-            onChange={e => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Поиск по файлу, группе..."
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
+            />
+          </div>
         </div>
       </div>
 

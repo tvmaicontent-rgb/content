@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { DepartmentType } from '../../types';
 import { parseExcelProductFile } from '../../services/excelService';
 import { storageService } from '../../services/storageService';
+import { googleSheetsService } from '../../services/googleSheetsService';
 import { formatCurrentDate } from '../../constants';
-import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface ProductUploadZoneProps {
   department: DepartmentType;
@@ -81,16 +82,45 @@ export const ProductUploadZone: React.FC<ProductUploadZoneProps> = ({
         const parsed = await parseExcelProductFile(file, department, nowStr);
         allNewProducts.push(...parsed);
 
-        setProgress(10 + Math.floor(((i + 1) / selectedFiles.length) * 75));
+        setProgress(10 + Math.floor(((i + 1) / selectedFiles.length) * 60));
       }
 
       if (allNewProducts.length > 0) {
+        // Save to local storage (IndexedDB)
         storageService.addProducts(allNewProducts);
-        setProgress(100);
-        setStatusMessage({
-          type: 'success',
-          text: `Успешно загружено: ${selectedFiles.length} файлов (${allNewProducts.length} SKU)!`,
-        });
+        setProgress(75);
+
+        // If Webhook is set up, sync to Google Sheets immediately
+        const hasWebhook = Boolean(googleSheetsService.getWebhookUrl());
+        if (hasWebhook) {
+          setStatusMessage({
+            type: 'info',
+            text: `Запись ${allNewProducts.length} SKU в Google Таблицу (лист «${department}»)...`,
+          });
+          setProgress(85);
+
+          const pushRes = await googleSheetsService.pushDepartmentProducts(department, allNewProducts);
+          setProgress(100);
+
+          if (pushRes.success) {
+            setStatusMessage({
+              type: 'success',
+              text: `Успешно загружено ${selectedFiles.length} файлов (${allNewProducts.length} SKU) и записано в Google Таблицу!`,
+            });
+          } else {
+            setStatusMessage({
+              type: 'info',
+              text: `Сохранено в базе: ${selectedFiles.length} файлов (${allNewProducts.length} SKU). Google Sheets Webhook: ${pushRes.message}. Вы можете повторить отправку из Реестра файлов.`,
+            });
+          }
+        } else {
+          setProgress(100);
+          setStatusMessage({
+            type: 'success',
+            text: `Успешно загружено: ${selectedFiles.length} файлов (${allNewProducts.length} SKU) в локальную базу. Настройте Webhook для автоматической записи в Google Таблицу.`,
+          });
+        }
+
         setSelectedFiles([]);
         onUploadSuccess();
       } else {

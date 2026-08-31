@@ -254,6 +254,10 @@ export const storageService = {
     return memoryProducts;
   },
 
+  getProductsByDepartment(department: DepartmentType): ProductItem[] {
+    return memoryProducts.filter(p => p.department === department);
+  },
+
   saveProducts(products: ProductItem[]): void {
     memoryProducts = products;
     // Async flush to IndexedDB

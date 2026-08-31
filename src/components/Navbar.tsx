@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Layers, CheckSquare, BarChart3, RotateCcw, ExternalLink, RefreshCw, CheckCircle2, AlertCircle, Link2, Sparkles } from 'lucide-react';
+import { Package, Layers, CheckSquare, BarChart3, RotateCcw, ExternalLink } from 'lucide-react';
 import { SPREADSHEET_URL, KAM_SPREADSHEET_URL } from '../constants';
-import { googleSheetsService, SyncResult } from '../services/googleSheetsService';
+import { googleSheetsService } from '../services/googleSheetsService';
 import { storageService } from '../services/storageService';
-import { GoogleSheetsModal } from './modals/GoogleSheetsModal';
 
 export type MainTabType = 'products' | 'groups' | 'tasks' | 'analytics';
 
@@ -18,41 +17,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   onTabChange,
   onResetData,
-  onSyncComplete,
 }) => {
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [productCount, setProductCount] = useState(storageService.getProducts().length);
-  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
-  const [hasWebhook, setHasWebhook] = useState(Boolean(googleSheetsService.getWebhookUrl()));
 
   useEffect(() => {
     const unsubscribe = googleSheetsService.subscribe(() => {
-      setIsSyncing(googleSheetsService.getIsSyncing());
-      setLastSyncTime(googleSheetsService.getLastSyncTime());
       setProductCount(storageService.getProducts().length);
-      setHasWebhook(Boolean(googleSheetsService.getWebhookUrl()));
     });
     return unsubscribe;
   }, []);
-
-  const handleSync = async () => {
-    setIsSyncing(true);
-    setSyncStatus('Загрузка таблиц Google Sheets...');
-    const result: SyncResult = await googleSheetsService.syncAll();
-    setIsSyncing(false);
-
-    if (result.success) {
-      setSyncStatus(`Синхронизировано: ${result.contentCount + result.kamCount} товаров, ${result.tasksCount} задач`);
-      setProductCount(result.contentCount + result.kamCount);
-      if (onSyncComplete) onSyncComplete();
-      setTimeout(() => setSyncStatus(null), 5000);
-    } else {
-      setSyncStatus(`Ошибка: ${result.error || 'не удалось синхронизировать'}`);
-      setTimeout(() => setSyncStatus(null), 7000);
-    }
-  };
 
   return (
     <>
@@ -80,45 +53,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-2.5">
-              {/* Google Sheets Two-Way Sync Settings Modal Trigger */}
-              <button
-                type="button"
-                onClick={() => setIsSheetsModalOpen(true)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border shadow-xs cursor-pointer ${
-                  hasWebhook
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-                }`}
-                title="Настройки двусторонней синхронизации с Google Sheets"
-              >
-                <div className={`w-2 h-2 rounded-full ${hasWebhook ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                <Link2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">
-                  {hasWebhook ? 'Связь активна' : 'Связь с Sheets'}
-                </span>
-              </button>
-
-              {/* Live Sync Button */}
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={isSyncing}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-                  isSyncing
-                    ? 'bg-sky-50 text-sky-500 border border-sky-200 cursor-not-allowed'
-                    : 'bg-sky-600 hover:bg-sky-700 text-white hover:shadow-sky-200'
-                }`}
-                title="Загрузить свежие данные напрямую из Google Sheets"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">
-                  {isSyncing ? 'Синхронизация...' : 'Синхронизация Sheets'}
-                </span>
-                <span className="sm:hidden">{isSyncing ? '...' : 'Sync'}</span>
-              </button>
-
-              {/* Google Sheets external links dropdown/buttons */}
-              <div className="hidden lg:flex items-center gap-1.5">
+              {/* Google Sheets external links buttons */}
+              <div className="flex items-center gap-1.5">
                 <a
                   href={SPREADSHEET_URL}
                   target="_blank"
@@ -127,6 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   title="Google Таблица: Отдел контента"
                 >
                   <ExternalLink className="w-3 h-3 text-slate-500" />
+                  <span className="hidden sm:inline">Таблица</span>
                   <span>Контент</span>
                 </a>
                 <a
@@ -137,6 +74,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   title="Google Таблица: КАМ"
                 >
                   <ExternalLink className="w-3 h-3 text-slate-500" />
+                  <span className="hidden sm:inline">Таблица</span>
                   <span>КАМ</span>
                 </a>
               </div>
@@ -152,27 +90,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Sync notification banner if active */}
-          {syncStatus && (
-            <div className="py-2 px-3.5 my-1.5 bg-sky-50 border border-sky-200 text-sky-900 rounded-xl text-xs flex items-center justify-between font-semibold animate-fadeIn">
-              <div className="flex items-center gap-2">
-                {isSyncing ? (
-                  <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
-                ) : syncStatus.startsWith('Ошибка') ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                )}
-                <span>{syncStatus}</span>
-              </div>
-              {lastSyncTime && (
-                <span className="text-[11px] text-sky-700 font-mono">
-                  {lastSyncTime}
-                </span>
-              )}
-            </div>
-          )}
 
           {/* Navigation Main Tabs */}
           <nav className="flex justify-start sm:justify-center -mb-px overflow-x-auto no-scrollbar gap-2 sm:gap-4 pt-1">
@@ -230,13 +147,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
         </div>
       </header>
-
-      {/* Google Sheets Settings & Webhook Modal */}
-      <GoogleSheetsModal
-        isOpen={isSheetsModalOpen}
-        onClose={() => setIsSheetsModalOpen(false)}
-        onSyncComplete={onSyncComplete}
-      />
     </>
   );
 };

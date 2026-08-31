@@ -176,8 +176,25 @@ export class GoogleSheetsService {
     this.notify();
   }
 
+  clearWebhookUrl(): void {
+    this.webhookUrl = '';
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('GOOGLE_SHEETS_WEBHOOK_URL');
+      } catch {
+        // ignore
+      }
+    }
+    this.notify();
+  }
+
   getPushLog(): PushLogItem[] {
     return [...this.pushLogs];
+  }
+
+  clearLogs(): void {
+    this.pushLogs = [];
+    this.notify();
   }
 
   private addLog(title: string, details: string, status: 'pending' | 'success' | 'error'): string {
@@ -395,6 +412,83 @@ export class GoogleSheetsService {
     } else {
       this.updateLog(logId, 'error', `${details} — ${res.error || 'ошибка отправки'}`);
       return false;
+    }
+  }
+
+  async pushDepartmentProducts(
+    department: DepartmentType,
+    products: ProductItem[]
+  ): Promise<{ success: boolean; message: string; count?: number }> {
+    if (!products || products.length === 0) {
+      return { success: true, message: 'Список товаров пуст', count: 0 };
+    }
+
+    const targetSheetName = department.includes('КАМ') || department.includes('Коммерческий')
+      ? '📥 Загруженные данные КАМ'
+      : '📥 Загруженные данные контента';
+
+    const title = `Выгрузка товаров: ${department}`;
+    const filesCount = new Set(products.map(p => p.sourceFile || 'Файл')).size;
+    const details = `${products.length} SKU (${filesCount} файлов) в лист «${targetSheetName}»`;
+    const logId = this.addLog(title, details, 'pending');
+
+    if (!this.webhookUrl) {
+      this.updateLog(logId, 'success', `${details} — сохранено локально`);
+      return {
+        success: true,
+        message: `Товары сохранены локально (${products.length} SKU). Для автоматической записи в лист «${targetSheetName}» укажите Webhook.`,
+        count: products.length,
+      };
+    }
+
+    const CHUNK_SIZE = 500;
+    let totalAdded = 0;
+    let lastError = '';
+
+    for (let i = 0; i < products.length; i += CHUNK_SIZE) {
+      const chunk = products.slice(i, i + CHUNK_SIZE);
+      const payload = {
+        action: 'appendDepartmentProducts',
+        department,
+        products: chunk.map(p => ({
+          externalCode: p.externalCode || '',
+          group3: p.group3 || '',
+          title: p.title || '',
+          status: p.status || '🆕 Новый',
+          pauseReason: p.pauseReason || '',
+          pauseDate: p.pauseDate || '',
+          executor: p.executor || '',
+          dateTaken: p.dateTaken || '',
+          dateCompleted: p.dateCompleted || '',
+          dateFinished: p.dateFinished || '',
+          sourceFile: p.sourceFile || '',
+          dateUploaded: p.dateUploaded || '',
+        })),
+        timestamp: new Date().toISOString(),
+      };
+
+      const res = await this.dispatchWebhook(payload);
+      if (res.success) {
+        totalAdded += chunk.length;
+      } else {
+        lastError = res.error || 'Ошибка отправки';
+      }
+    }
+
+    if (totalAdded > 0) {
+      this.updateLog(logId, 'success', `${details} — отправлено в Google Sheets`);
+      return {
+        success: true,
+        message: `Успешно выгружено ${totalAdded} SKU в Google Таблицу (лист «${targetSheetName}»)!`,
+        count: totalAdded,
+      };
+    } else {
+      this.updateLog(logId, 'error', `${details} — ${lastError || 'ошибка отправки'}`);
+      return {
+        success: false,
+        message: lastError || 'Ошибка при отправке в Google Sheets',
+        count: 0,
+      };
     }
   }
 

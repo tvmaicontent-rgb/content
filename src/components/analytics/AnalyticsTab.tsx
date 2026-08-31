@@ -1699,7 +1699,7 @@ export const AnalyticsTab: React.FC = () => {
               {/* Content Sheet */}
               <div className="p-3 bg-sky-50/70 border border-sky-200 rounded-xl flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-bold text-sky-950">Таблица Отдела контента</div>
+                  <div className="font-bold text-sky-950">Лист «📥 Загруженные данные контента»</div>
                   <div className="text-[11px] text-sky-700 font-mono truncate max-w-[320px]">
                     {SPREADSHEET_URL}
                   </div>
@@ -1728,7 +1728,7 @@ export const AnalyticsTab: React.FC = () => {
               {/* KAM Sheet */}
               <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-bold text-indigo-950">Таблица КАМ (Коммерческий отдел)</div>
+                  <div className="font-bold text-indigo-950">Лист «📥 Загруженные данные КАМ»</div>
                   <div className="text-[11px] text-indigo-700 font-mono truncate max-w-[320px]">
                     {KAM_SPREADSHEET_URL}
                   </div>

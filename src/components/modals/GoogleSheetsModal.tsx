@@ -82,6 +82,9 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const appsScriptCode = `/**
  * GOOGLE APPS SCRIPT ДЛЯ ДВУСТОРОННЕЙ СИНХРОНИЗАЦИИ
  * Панель управления отделом контента и КАМ
+ * Листы для загружаемых товаров:
+ *  - «📥 Загруженные данные контента» (gid=59376984)
+ *  - «📥 Загруженные данные КАМ» (gid=183144046)
  */
 
 function doGet(e) {
@@ -102,6 +105,54 @@ function doPost(e) {
   return handleRequest(data);
 }
 
+/**
+ * Точный поиск листа по GID или списку названий
+ */
+function findSheetByGidOrNames(ss, targetGid, possibleNames) {
+  var all = ss.getSheets();
+  
+  // 1. Поиск по точному ID вкладки (GID)
+  if (targetGid) {
+    for (var g = 0; g < all.length; g++) {
+      if (String(all[g].getSheetId()) === String(targetGid)) {
+        return all[g];
+      }
+    }
+  }
+  
+  // 2. Поиск по точному названию
+  for (var i = 0; i < possibleNames.length; i++) {
+    var s = ss.getSheetByName(possibleNames[i]);
+    if (s) return s;
+  }
+  
+  // 3. Поиск без учета спецсимволов/эмодзи и регистра
+  var normalize = function(str) {
+    return str.replace(/[^\\w\\s\\u0400-\\u04FF]/gi, '').toLowerCase().replace(/\\s+/g, ' ').trim();
+  };
+  
+  for (var j = 0; j < all.length; j++) {
+    var sNorm = normalize(all[j].getName());
+    for (var k = 0; k < possibleNames.length; k++) {
+      var pNorm = normalize(possibleNames[k]);
+      if (sNorm === pNorm) return all[j];
+    }
+  }
+  
+  // 4. Поиск по ключевым словам (загруженные + кам/контент)
+  for (var m = 0; m < all.length; m++) {
+    var rawName = all[m].getName().toLowerCase();
+    for (var n = 0; n < possibleNames.length; n++) {
+      var pTarget = possibleNames[n].toLowerCase();
+      if (pTarget.indexOf('загруженные') !== -1 && rawName.indexOf('загруженные') !== -1) {
+        if (pTarget.indexOf('кам') !== -1 && rawName.indexOf('кам') !== -1) return all[m];
+        if (pTarget.indexOf('контент') !== -1 && rawName.indexOf('контент') !== -1) return all[m];
+      }
+    }
+  }
+  return null;
+}
+
 function handleRequest(data) {
   var action = data.action || 'ping';
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -112,26 +163,145 @@ function handleRequest(data) {
       response.success = true;
       response.message = 'Связь с Google Таблицей активна';
       response.spreadsheetName = ss.getName();
+    } else if (action === 'appendDepartmentProducts' || action === 'uploadProducts') {
+      var dept = data.department || 'Отдел контента';
+      var isKam = (dept.indexOf('КАМ') !== -1 || dept.indexOf('Коммерческий') !== -1);
+      
+      // Ищем именно листы: «📥 Загруженные данные КАМ» (gid 183144046) или «📥 Загруженные данные контента» (gid 59376984)
+      var targetSheet = isKam
+        ? findSheetByGidOrNames(ss, 183144046, ['📥 Загруженные данные КАМ', 'Загруженные данные КАМ', '📥 Загруженные данные кам', 'Загруженные данные кам', 'Коммерческий отдел'])
+        : findSheetByGidOrNames(ss, 59376984, ['📥 Загруженные данные контента', 'Загруженные данные контента', '📥 Загруженные данные контент', 'Загруженные данные контент', 'Отдел контента']);
+
+      if (!targetSheet) {
+        var newSheetName = isKam ? '📥 Загруженные данные КАМ' : '📥 Загруженные данные контента';
+        targetSheet = ss.insertSheet(newSheetName);
+        targetSheet.appendRow(['ID', 'Внешний код', 'Группа 3', 'Наименование', 'Статус', 'Причина паузы', 'Дата паузы', 'Исполнитель', 'Дата взятия', 'Дата выполнения', 'Дата завершения работы', 'Источник', 'Дата загрузки']);
+      }
+
+      var products = data.products || [];
+      if (products.length > 0) {
+        var lastRow = targetSheet.getLastRow();
+        var maxId = 0;
+        if (lastRow > 1) {
+          var idVals = targetSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+          for (var idIdx = 0; idIdx < idVals.length; idIdx++) {
+            var parsedId = parseInt(idVals[idIdx][0], 10);
+            if (!isNaN(parsedId) && parsedId > maxId) maxId = parsedId;
+          }
+        }
+
+        var pRows = [];
+        var filesMap = {};
+
+        for (var pIdx = 0; pIdx < products.length; pIdx++) {
+          var p = products[pIdx];
+          maxId++;
+          var file = p.sourceFile || p.fileName || 'Файл.xlsx';
+          var g3 = p.group3 || '';
+          var dUpload = p.dateUploaded || Utilities.formatDate(new Date(), 'GMT+3', 'dd.MM.yyyy');
+
+          if (!filesMap[file]) {
+            filesMap[file] = { group3: g3, count: 0, dateUploaded: dUpload };
+          }
+          filesMap[file].count++;
+
+          pRows.push([
+            maxId,
+            p.externalCode || '',
+            g3,
+            p.title || '',
+            p.status || '🆕 Новый',
+            p.pauseReason || '',
+            p.pauseDate || '',
+            p.executor || '',
+            p.dateTaken || '',
+            p.dateCompleted || '',
+            p.dateFinished || '',
+            file,
+            dUpload
+          ]);
+        }
+
+        var startP = targetSheet.getLastRow() + 1;
+        var endP = startP + pRows.length - 1;
+        if (endP > targetSheet.getMaxRows()) {
+          targetSheet.insertRowsAfter(targetSheet.getMaxRows(), (endP - targetSheet.getMaxRows()) + 50);
+        }
+        targetSheet.getRange(startP, 1, pRows.length, 13).setValues(pRows);
+
+        // Синхронизация с листом Рабочие группы (КАМ / Контент)
+        var wgSheet = isKam
+          ? findSheetByGidOrNames(ss, 1367779997, ['Рабочие группы КАМ', 'Рабочие группы кам', 'Группы КАМ'])
+          : findSheetByGidOrNames(ss, 33531424, ['Рабочие группы контент', 'Рабочие группы Контент', 'Группы контент']);
+
+        if (wgSheet) {
+          var wgRange = wgSheet.getDataRange();
+          var wgVals = wgRange.getValues();
+          var existingWgFiles = {};
+          for (var wgi = 1; wgi < wgVals.length; wgi++) {
+            var exFile = (wgVals[wgi][0] || '').toString().toLowerCase().trim();
+            if (exFile) existingWgFiles[exFile] = wgi + 1;
+          }
+
+          var newWgRows = [];
+          for (var fKey in filesMap) {
+            var fObj = filesMap[fKey];
+            var fKeyLower = fKey.toLowerCase().trim();
+            if (!existingWgFiles[fKeyLower]) {
+              newWgRows.push([
+                fKey,
+                fObj.group3,
+                fObj.count,
+                fObj.count,
+                0,
+                0,
+                '🆕 Новый',
+                '',
+                '',
+                '',
+                '',
+                '',
+                fObj.dateUploaded,
+                0
+              ]);
+            }
+          }
+
+          if (newWgRows.length > 0) {
+            var wgStart = wgSheet.getLastRow() + 1;
+            var wgEnd = wgStart + newWgRows.length - 1;
+            if (wgEnd > wgSheet.getMaxRows()) {
+              wgSheet.insertRowsAfter(wgSheet.getMaxRows(), (wgEnd - wgSheet.getMaxRows()) + 20);
+            }
+            wgSheet.getRange(wgStart, 1, newWgRows.length, 14).setValues(newWgRows);
+          }
+        }
+
+        response.success = true;
+        response.addedRows = pRows.length;
+        response.addedFiles = Object.keys(filesMap).length;
+        response.targetSheet = targetSheet.getName();
+        response.message = 'Успешно записано ' + pRows.length + ' позиций в лист «' + targetSheet.getName() + '»!';
+      } else {
+        response.success = true;
+        response.message = 'Список товаров пуст';
+      }
     } else if (action === 'updateProductStatus') {
       var dept = data.department || 'Отдел контента';
-      var sheetName = (dept.indexOf('КАМ') !== -1 || dept.indexOf('Коммерческий') !== -1)
-        ? 'Коммерческий отдел' : 'Отдел контента';
-      var sheet = ss.getSheetByName(sheetName);
-      if (!sheet) {
-        var allSheets = ss.getSheets();
-        for (var i = 0; i < allSheets.length; i++) {
-          if (allSheets[i].getName().indexOf('контент') !== -1 && sheetName === 'Отдел контента') { sheet = allSheets[i]; break; }
-          if ((allSheets[i].getName().indexOf('КАМ') !== -1 || allSheets[i].getName().indexOf('Коммерч') !== -1) && sheetName === 'Коммерческий отдел') { sheet = allSheets[i]; break; }
-        }
-      }
-      if (!sheet) throw new Error('Лист "' + sheetName + '" не найден');
+      var isKam = (dept.indexOf('КАМ') !== -1 || dept.indexOf('Коммерческий') !== -1);
+      
+      var targetSheet = isKam
+        ? findSheetByGidOrNames(ss, 183144046, ['📥 Загруженные данные КАМ', 'Загруженные данные КАМ', '📥 Загруженные данные кам', 'Загруженные данные кам', 'Коммерческий отдел'])
+        : findSheetByGidOrNames(ss, 59376984, ['📥 Загруженные данные контента', 'Загруженные данные контента', '📥 Загруженные данные контент', 'Загруженные данные контент', 'Отдел контента']);
+
+      if (!targetSheet) throw new Error('Лист «' + (isKam ? '📥 Загруженные данные КАМ' : '📥 Загруженные данные контента') + '» не найден');
 
       var files = data.files || [];
       var updates = data.updates || {};
       var fileSet = {};
       for (var f = 0; f < files.length; f++) fileSet[files[f].toLowerCase().trim()] = true;
 
-      var range = sheet.getDataRange();
+      var range = targetSheet.getDataRange();
       var vals = range.getValues();
       var count = 0;
 
@@ -151,8 +321,10 @@ function handleRequest(data) {
       }
       if (count > 0) range.setValues(vals);
 
-      var wName = sheetName === 'Коммерческий отдел' ? 'Рабочие группы КАМ' : 'Рабочие группы контент';
-      var wSheet = ss.getSheetByName(wName);
+      var wSheet = isKam
+        ? findSheetByGidOrNames(ss, 1367779997, ['Рабочие группы КАМ', 'Рабочие группы кам', 'Группы КАМ'])
+        : findSheetByGidOrNames(ss, 33531424, ['Рабочие группы контент', 'Рабочие группы Контент', 'Группы контент']);
+
       if (wSheet) {
         var wRange = wSheet.getDataRange();
         var wVals = wRange.getValues();
@@ -173,13 +345,14 @@ function handleRequest(data) {
       }
       response.success = true;
       response.updatedRows = count;
-      response.message = 'Обновлено ' + count + ' позиций в таблице';
+      response.targetSheet = targetSheet.getName();
+      response.message = 'Обновлено ' + count + ' позиций в листе «' + targetSheet.getName() + '»';
     } else if (action === 'updateGroup') {
       var g3 = (data.group3 || '').toString().trim().toLowerCase();
       var gUp = data.updates || {};
       var tSheets = ['Рабочие группы КАМ', 'Рабочие группы контент', 'Новые товары'];
       for (var s = 0; s < tSheets.length; s++) {
-        var gs = ss.getSheetByName(tSheets[s]);
+        var gs = findSheetByGidOrNames(ss, null, [tSheets[s]]);
         if (!gs) continue;
         var gr = gs.getDataRange();
         var gv = gr.getValues();
@@ -206,7 +379,7 @@ function handleRequest(data) {
       response.success = true;
       response.message = 'Группа "' + data.group3 + '" обновлена';
     } else if (action === 'updateTask' || action === 'addTask') {
-      var ts = ss.getSheetByName('Задачи');
+      var ts = findSheetByGidOrNames(ss, 1482592400, ['Задачи']);
       if (!ts) {
         ts = ss.insertSheet('Задачи');
         ts.appendRow(['ID', 'Тема', 'Описание', 'Исполнители', 'Статус', 'Срочность', 'Изображения Base64', 'Дата создания', 'Дата обновления']);
@@ -231,17 +404,7 @@ function handleRequest(data) {
       else ts.appendRow([tD.id || String(tv.length), tD.title || '', tD.description || '', tD.executors || '', tD.status || 'Новая', tD.urgency || 'Текущая задача', tD.imageBase64 || '', tD.createdAt || new Date().toLocaleString('ru-RU'), tD.updatedAt || new Date().toLocaleString('ru-RU')]);
       response.success = true;
     } else if (action === 'appendNewProductsBatch' || action === 'addNewProductsBatch') {
-      var nSheet = ss.getSheetByName('Новые товары');
-      if (!nSheet) {
-        var allSh = ss.getSheets();
-        for (var si = 0; si < allSh.length; si++) {
-          var sName = allSh[si].getName().toLowerCase();
-          if (sName.indexOf('нов') !== -1 && sName.indexOf('товар') !== -1) {
-            nSheet = allSh[si];
-            break;
-          }
-        }
-      }
+      var nSheet = findSheetByGidOrNames(ss, 413377182, ['Новые товары', 'НовыеТовары', 'Новые SKU']);
       if (!nSheet) {
         nSheet = ss.insertSheet('Новые товары');
         nSheet.appendRow(['Внешний код', 'Наименование', 'Дата создания', 'Цифровой код менеджера', 'Название раздела', 'Менеджер', 'Контент', 'Добавлено', 'Выгружено в файл']);
@@ -250,8 +413,6 @@ function handleRequest(data) {
       var bTitle = data.batchTitle || ('📅 ' + Utilities.formatDate(new Date(), 'GMT+3', 'dd.MM.yyyy HH:mm:ss'));
       var bItems = data.items || [];
       if (bItems.length > 0) {
-        // Находим РЕАЛЬНУЮ последнюю строку с данными в Колонке 1 (Внешний код),
-        // чтобы не перескакивать через пустые строки с формулами FALSE в столбцах H/I
         var maxCheckRow = Math.max(nSheet.getLastRow(), 1);
         var col1Vals = nSheet.getRange(1, 1, maxCheckRow, 1).getValues();
         var realLastRow = 1;
@@ -264,7 +425,6 @@ function handleRequest(data) {
         }
 
         var rows = [];
-        // Строка-разделитель партии
         rows.push([bTitle, '', '', '', '', '', '', '', '']);
 
         for (var bi = 0; bi < bItems.length; bi++) {
@@ -289,10 +449,8 @@ function handleRequest(data) {
           nSheet.insertRowsAfter(currentMaxRows, (endRow - currentMaxRows) + 50);
         }
 
-        // Записываем всю партию напрямую со следующей свободной строки
         nSheet.getRange(startRow, 1, rows.length, 9).setValues(rows);
 
-        // Выделяем заголовок партии жирным и серым фоном
         try {
           nSheet.getRange(startRow, 1, 1, 9).setFontWeight('bold').setBackground('#f1f5f9');
         } catch(e) {}
@@ -301,7 +459,7 @@ function handleRequest(data) {
         response.startRow = startRow;
         response.endRow = endRow;
         response.addedRows = bItems.length;
-        response.message = 'Успешно записано ' + bItems.length + ' позиций (строки ' + startRow + '–' + endRow + ') в Google Таблицу!';
+        response.message = 'Успешно записано ' + bItems.length + ' позиций в лист «Новые товары»!';
       } else {
         response.success = true;
         response.message = 'Список товаров пуст';
