@@ -9,6 +9,7 @@ interface StatusActionsBarProps {
   onOpenAnalytics: () => void;
   onOpenContacts: () => void;
   onOpenNewProducts: () => void;
+  canEdit?: boolean;
 }
 
 export const StatusActionsBar: React.FC<StatusActionsBarProps> = ({
@@ -19,6 +20,7 @@ export const StatusActionsBar: React.FC<StatusActionsBarProps> = ({
   onOpenAnalytics,
   onOpenContacts,
   onOpenNewProducts,
+  canEdit = true,
 }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
@@ -33,8 +35,12 @@ export const StatusActionsBar: React.FC<StatusActionsBarProps> = ({
           <p className="text-xs text-slate-500 mb-3.5">
             Смена состояния партии товаров:
           </p>
+          {!canEdit && (
+            <p className="text-xs text-slate-400 mb-3.5">Только просмотр — смена статусов недоступна.</p>
+          )}
         </div>
 
+        {canEdit && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <button
             type="button"
@@ -72,6 +78,7 @@ export const StatusActionsBar: React.FC<StatusActionsBarProps> = ({
             <span className="font-mono text-[11px]">Завершить</span>
           </button>
         </div>
+        )}
       </div>
 
       {/* 3. Дополнительная информация */}

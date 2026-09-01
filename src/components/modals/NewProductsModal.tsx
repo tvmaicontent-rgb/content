@@ -8,6 +8,7 @@ import { formatCurrentDate, NEW_PRODUCTS_SPREADSHEET_URL } from '../../constants
 import { SortHeader } from '../common/SortHeader';
 import { SortConfig, sortData } from '../../utils/sortUtils';
 import { GoogleSheetsModal } from './GoogleSheetsModal';
+import { useAuth } from '../../context/AuthContext';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -59,6 +60,7 @@ const normalizeGroupKey = (name: string): string => {
 };
 
 export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onClose }) => {
+  const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<'view' | 'summary' | 'upload'>('view');
   const [items, setItems] = useState<NewProductItem[]>([]);
   const [allProducts, setAllProducts] = useState<ProductItem[]>([]);
@@ -100,7 +102,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
     const data = storageService.getNewProducts();
     setItems(data);
     setAllProducts(storageService.getProducts());
-    setHasWebhook(Boolean(googleSheetsService.getWebhookUrl()));
+    googleSheetsService.refreshWebhookStatus().then(setHasWebhook);
 
     const uniqueBatches = Array.from(new Set(data.map(getBatchKey)));
     if (uniqueBatches.length > 0 && (!selectedBatchKey || !uniqueBatches.includes(selectedBatchKey))) {
@@ -528,6 +530,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                   </span>
                 )}
               </button>
+              {isAdmin && (
               <button
                 type="button"
                 onClick={() => setActiveTab('upload')}
@@ -540,10 +543,11 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                 <UploadCloud className="w-4 h-4 shrink-0" />
                 <span>📥 Загрузить Excel</span>
               </button>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap pb-1">
-              {/* Webhook Connection status pill */}
+              {isAdmin && (
               <button
                 type="button"
                 onClick={() => setIsSheetsModalOpen(true)}
@@ -558,6 +562,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                 <Link2 className="w-3.5 h-3.5 shrink-0" />
                 <span>{hasWebhook ? 'Webhook активен' : 'Webhook'}</span>
               </button>
+              )}
 
               {/* Read sync from Sheets */}
               <button
@@ -669,7 +674,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                      {/* Push current batch to Google Sheets button */}
+                      {isAdmin && (
                       <button
                         type="button"
                         onClick={handlePushSelectedBatch}
@@ -684,8 +689,9 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                         )}
                         <span>{isPushing ? 'Отправка...' : 'Отправить в Sheets'}</span>
                       </button>
+                      )}
 
-                      {/* Copy for direct paste into Google Sheets */}
+                      {isAdmin && (
                       <button
                         type="button"
                         onClick={() => handleCopyBatchForGoogleSheets(currentBatchItems, selectedBatchKey)}
@@ -696,6 +702,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                         {copiedBatchForSheets ? <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <Copy className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
                         <span>{copiedBatchForSheets ? 'Скопировано!' : 'Скопировать для Sheets'}</span>
                       </button>
+                      )}
 
                       <button
                         type="button"
@@ -882,7 +889,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                  {/* Push to Sheets button */}
+                  {isAdmin && (
                   <button
                     type="button"
                     onClick={handlePushAllBatches}
@@ -897,7 +904,9 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                     )}
                     <span>{isPushing ? 'Отправка...' : 'Отправить в Sheets'}</span>
                   </button>
+                  )}
 
+                  {isAdmin && (
                   <button
                     type="button"
                     onClick={() => handleCopyBatchForGoogleSheets(summarySourceItems, selectedSummaryDate)}
@@ -908,6 +917,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
                     {copiedBatchForSheets ? <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <Copy className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
                     <span>{copiedBatchForSheets ? 'Скопировано!' : 'Скопировать для Sheets'}</span>
                   </button>
+                  )}
 
                   <button
                     type="button"
@@ -1178,7 +1188,7 @@ export const NewProductsModal: React.FC<NewProductsModalProps> = ({ isOpen, onCl
         isOpen={isSheetsModalOpen}
         onClose={() => {
           setIsSheetsModalOpen(false);
-          setHasWebhook(Boolean(googleSheetsService.getWebhookUrl()));
+          googleSheetsService.refreshWebhookStatus().then(setHasWebhook);
         }}
         onSyncComplete={loadData}
       />

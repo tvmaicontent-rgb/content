@@ -10,6 +10,7 @@ interface TaskModalProps {
   onSave: (taskData: Omit<TaskItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdate: (id: string, updates: Partial<TaskItem>) => void;
   onDelete: (id: string) => void;
+  readOnly?: boolean;
 }
 
 export const TaskModal: React.FC<TaskModalProps> = ({
@@ -19,6 +20,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   onSave,
   onUpdate,
   onDelete,
+  readOnly = false,
 }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -67,6 +69,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (readOnly) return;
     if (!title.trim()) {
       setError('Заполните поле "Тема задачи"!');
       return;
@@ -133,6 +136,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             }}
             className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 font-medium"
             required
+            disabled={readOnly}
           />
         </div>
 
@@ -144,6 +148,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               value={urgency}
               onChange={e => setUrgency(e.target.value as TaskUrgency)}
               className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 font-medium"
+              disabled={readOnly}
             >
               <option value="Текущая задача">Текущая задача</option>
               <option value="Срочно">Срочно</option>
@@ -156,6 +161,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               value={status}
               onChange={e => setStatus(e.target.value as TaskStatus)}
               className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 font-medium"
+              disabled={readOnly}
             >
               <option value="Новая">Новая (TO DO)</option>
               <option value="В работе">В работе (IN PROGRESS)</option>
@@ -179,6 +185,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             }}
             className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500"
             required
+            disabled={readOnly}
           />
         </div>
 
@@ -194,6 +201,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             value={description}
             onChange={e => setDescription(e.target.value)}
             className="w-full p-3 text-xs font-mono border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500"
+            disabled={readOnly}
           />
         </div>
 
@@ -241,7 +249,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-          {taskToEdit ? (
+          {taskToEdit && !readOnly ? (
             <button
               type="button"
               onClick={handleDelete}
@@ -260,8 +268,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
             >
-              Отмена
+              {readOnly ? 'Закрыть' : 'Отмена'}
             </button>
+            {!readOnly && (
             <button
               type="submit"
               className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-xs flex items-center gap-1.5 transition-colors"
@@ -269,6 +278,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               <Save className="w-4 h-4" />
               {taskToEdit ? 'Сохранить изменения' : 'Создать задачу'}
             </button>
+            )}
           </div>
         </div>
       </form>

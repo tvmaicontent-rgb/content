@@ -4,6 +4,7 @@ import { storageService } from '../../services/storageService';
 import { TaskCard } from './TaskCard';
 import { TaskModal } from './TaskModal';
 import { Plus, Search, CheckSquare, Layers } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface ColumnConfig {
   id: string;
@@ -15,6 +16,7 @@ interface ColumnConfig {
 }
 
 export const TasksTab: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -153,6 +155,7 @@ export const TasksTab: React.FC = () => {
             />
           </div>
 
+          {isAdmin && (
           <button
             type="button"
             onClick={() => handleOpenNew()}
@@ -161,6 +164,7 @@ export const TasksTab: React.FC = () => {
             <Plus className="w-4 h-4" />
             <span>Новая задача</span>
           </button>
+          )}
         </div>
       </div>
 
@@ -185,6 +189,7 @@ export const TasksTab: React.FC = () => {
               </div>
 
               {/* Quick + Create button under column header */}
+              {isAdmin && (
               <button
                 type="button"
                 onClick={() =>
@@ -198,6 +203,7 @@ export const TasksTab: React.FC = () => {
                 <Plus className="w-3.5 h-3.5" />
                 <span>Создать</span>
               </button>
+              )}
 
               {/* Tasks List */}
               <div className="space-y-2.5 min-h-[220px]">
@@ -211,7 +217,11 @@ export const TasksTab: React.FC = () => {
                       key={task.id}
                       task={task}
                       onOpen={handleOpenEdit}
-                      onStatusChange={(id, newStatus) => handleUpdate(id, { status: newStatus as any })}
+                      onStatusChange={
+                        isAdmin
+                          ? (id, newStatus) => handleUpdate(id, { status: newStatus as any })
+                          : undefined
+                      }
                     />
                   ))
                 )}
@@ -240,6 +250,7 @@ export const TasksTab: React.FC = () => {
         onSave={handleSaveNew}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
+        readOnly={!isAdmin}
       />
     </div>
   );

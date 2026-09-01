@@ -1,0 +1,16 @@
+{
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/sync-sheets.ts": {
+      "maxDuration": 60
+    },
+    "api/sheets/webhook-proxy.ts": {
+      "maxDuration": 60
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { Download, Github, Terminal, Globe, Check, Copy, FolderArchive, ArrowRight } from 'lucide-react';
+import { authFetch } from '../../utils/auth';
 
 interface ExportProjectModalProps {
   isOpen: boolean;
@@ -10,8 +11,16 @@ interface ExportProjectModalProps {
 export const ExportProjectModal: React.FC<ExportProjectModalProps> = ({ isOpen, onClose }) => {
   const [copied, setCopied] = useState<string | null>(null);
 
-  const handleDownloadZip = () => {
-    window.location.href = '/api/download-project-zip';
+  const handleDownloadZip = async () => {
+    const res = await authFetch('/api/download-project-zip');
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'content-ops-project.zip';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const copyToClipboard = (text: string, id: string) => {

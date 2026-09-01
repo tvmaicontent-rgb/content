@@ -29,7 +29,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   onClose,
   onSyncComplete,
 }) => {
-  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookConfigured, setWebhookConfigured] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -45,22 +45,20 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setWebhookUrl(googleSheetsService.getWebhookUrl());
       setLogs(googleSheetsService.getPushLog());
       setTestResult(null);
+      googleSheetsService.refreshWebhookStatus().then(configured => {
+        setWebhookConfigured(configured);
+      });
     }
   }, [isOpen]);
-
-  const handleSaveUrl = () => {
-    googleSheetsService.setWebhookUrl(webhookUrl);
-    handleTestConnection();
-  };
 
   const handleTestConnection = async () => {
     setIsTesting(true);
     setTestResult(null);
-    const res = await googleSheetsService.testWebhook(webhookUrl);
+    const res = await googleSheetsService.testWebhook();
     setIsTesting(false);
+    setWebhookConfigured(res.success);
     setTestResult(res);
     setLogs(googleSheetsService.getPushLog());
   };
@@ -577,28 +575,30 @@ function handleRequest(data) {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                URL веб-приложения Google Apps Script (Webhook):
+                Webhook Google Apps Script
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={webhookUrl}
-                  onChange={e => setWebhookUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                  className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 font-mono bg-white"
-                />
+              <div className="flex items-center gap-2">
+                {webhookConfigured ? (
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-full">
+                    Настроен на сервере
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[11px] font-bold rounded-full">
+                    Не задан
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={handleSaveUrl}
-                  disabled={isTesting || !webhookUrl.trim()}
+                  onClick={handleTestConnection}
+                  disabled={isTesting}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                  <span>{isTesting ? 'Проверка...' : 'Сохранить и проверить'}</span>
+                  <span>{isTesting ? 'Проверка...' : 'Проверить связь'}</span>
                 </button>
               </div>
               <p className="text-[11px] text-slate-500 mt-1.5">
-                Этот URL генерируется при развертывании скрипта в вашей Google Таблице (вкладка «Инструкция»).
+                URL задаётся на сервере через переменную GOOGLE_SHEETS_WEBHOOK_URL.
               </p>
             </div>
 

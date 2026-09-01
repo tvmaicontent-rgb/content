@@ -14,8 +14,10 @@ import { AnalyticsModal } from '../modals/AnalyticsModal';
 import { ContactsModal } from '../modals/ContactsModal';
 import { NewProductsModal } from '../modals/NewProductsModal';
 import { ExternalLink, Layers, RefreshCw } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export const ProductsTab: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [department, setDepartment] = useState<DepartmentType>('Отдел контента');
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [summaries, setSummaries] = useState<FileGroupSummary[]>([]);
@@ -125,11 +127,14 @@ export const ProductsTab: React.FC = () => {
 
       {/* Top 3 Control Sections */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {isAdmin && (
         <div className="md:col-span-1">
           <ProductUploadZone department={department} onUploadSuccess={loadData} />
         </div>
-        <div className="md:col-span-2">
+        )}
+        <div className={isAdmin ? 'md:col-span-2' : 'md:col-span-3'}>
           <StatusActionsBar
+            canEdit={isAdmin}
             onOpenTakeInWork={() => setIsTakeInWorkOpen(true)}
             onOpenPause={() => setIsPauseOpen(true)}
             onOpenUnpause={() => setIsUnpauseOpen(true)}

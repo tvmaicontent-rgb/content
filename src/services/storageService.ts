@@ -208,19 +208,6 @@ async function initFromStorage(): Promise<void> {
 
     isInitialized = true;
     notifySubscribers();
-
-    // Trigger initial background sync from Google Sheets live CSVs
-    setTimeout(() => {
-      googleSheetsService.syncAll().then(res => {
-        if (res.success) {
-          console.log(`[Google Sheets] Auto-synced on startup: ${res.contentCount + res.kamCount} products, ${res.tasksCount} tasks, ${res.groupsCount} groups.`);
-        }
-      }).catch(err => {
-        console.warn('[Google Sheets] Startup sync error:', err);
-      });
-      // Start periodic sync every 3 minutes
-      googleSheetsService.startAutoSync(3);
-    }, 500);
   } catch (e) {
     console.warn('Init from IndexedDB fallback:', e);
     isInitialized = true;

@@ -3,6 +3,7 @@ import { Package, Layers, CheckSquare, BarChart3, RotateCcw, ExternalLink, Refre
 import { SPREADSHEET_URL, KAM_SPREADSHEET_URL } from '../constants';
 import { googleSheetsService, SyncResult } from '../services/googleSheetsService';
 import { storageService } from '../services/storageService';
+import { useAuth } from '../context/AuthContext';
 
 export type MainTabType = 'products' | 'groups' | 'tasks' | 'analytics';
 
@@ -19,6 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onResetData,
   onSyncComplete,
 }) => {
+  const { isAdmin } = useAuth();
   const [productCount, setProductCount] = useState(storageService.getProducts().length);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </a>
               </div>
 
+              {isAdmin && (
               <button
                 type="button"
                 onClick={onResetData}
@@ -137,6 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                 <span className="hidden md:inline">Сброс</span>
               </button>
+              )}
             </div>
           </div>
 

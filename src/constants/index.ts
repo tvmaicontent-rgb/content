@@ -764,10 +764,6 @@ export const SITE_ORDER_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/
 export const TASKS_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/edit?gid=1482592400#gid=1482592400';
 export const NEW_PRODUCTS_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/edit?gid=413377182#gid=413377182';
 export const CONTACTS_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/edit?gid=1825148105#gid=1825148105';
-export const MANAGERS_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/edit?gid=1474629181#gid=1474629181';
-export const WORKING_GROUPS_CONTENT_URL = 'https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/edit?gid=33531424#gid=33531424';
-export const WORKING_GROUPS_KAM_URL = 'https://docs.google.com/spreadsheets/d/1vCZQgzBPv8uahr8ckRI1f-TA_QS6Afz2B9NP_ZMj6ek/edit?gid=1367779997#gid=1367779997';
-export const PROPERTIES_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1hV2tBPZDxlEvkXYrzo9rsS40MuJ_eMQbzWr9WQRgytw/edit?gid=0#gid=0';
 
 export const INITIAL_MATERIK_STATUS: Record<string, string> = {
   'интерьерный свет': '1',

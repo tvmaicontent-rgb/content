@@ -3,6 +3,7 @@ import { CategoryGroup, GroupOrderItem } from '../../types';
 import { storageService } from '../../services/storageService';
 import { googleSheetsService } from '../../services/googleSheetsService';
 import { MANAGERS_LIST } from '../../constants';
+import { useAuth } from '../../context/AuthContext';
 import { GroupEditorModal } from './GroupEditorModal';
 import { BulkAddGroupsModal } from './BulkAddGroupsModal';
 import { GroupOrderModal } from './GroupOrderModal';
@@ -40,6 +41,7 @@ const KAM_STATUS_OPTIONS = [
 ];
 
 export const GroupsTab: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
   const [groupOrders, setGroupOrders] = useState<GroupOrderItem[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'inWork' | 'released' | 'addFile'>('inWork');
@@ -235,6 +237,7 @@ export const GroupsTab: React.FC = () => {
 
   // Inline Cell Edit handlers
   const startEditingCell = (id: string, field: keyof CategoryGroup, currentValue: string) => {
+    if (!isAdmin) return;
     setEditingCell({ id, field });
     setTempCellValue(currentValue || '');
   };
@@ -311,6 +314,8 @@ export const GroupsTab: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {isAdmin && (
+            <>
           <button
             type="button"
             onClick={() => {
@@ -331,6 +336,8 @@ export const GroupsTab: React.FC = () => {
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span>Массовое добавление</span>
           </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -344,7 +351,7 @@ export const GroupsTab: React.FC = () => {
       </div>
 
       {/* Floating Mass Edit Toolbar if rows are selected */}
-      {selectedIds.size > 0 && (
+      {isAdmin && selectedIds.size > 0 && (
         <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 shadow-xl border border-indigo-800/50 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
           <div className="flex items-center gap-3">
             <span className="bg-sky-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
@@ -558,6 +565,7 @@ export const GroupsTab: React.FC = () => {
         </div>
 
         {/* Quick Helper notice for inline editing */}
+        {isAdmin && (
         <div className="flex items-center justify-between text-[11px] text-slate-500 bg-sky-50/60 px-3.5 py-1.5 rounded-lg border border-sky-100">
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
@@ -569,6 +577,7 @@ export const GroupsTab: React.FC = () => {
             Уникальных групп 3 в списке: {countUniqueGroup3(rawFilteredList)} (строк: {rawFilteredList.length})
           </span>
         </div>
+        )}
 
         {/* Scrollable table with sticky columns & inline editing */}
         <div className="border border-slate-200 rounded-xl overflow-x-auto max-h-[65vh] overflow-y-auto shadow-2xs">
@@ -576,6 +585,7 @@ export const GroupsTab: React.FC = () => {
             <thead className="bg-slate-100/90 text-slate-700 font-bold text-[11px] uppercase tracking-wider sticky top-0 z-20 border-b border-slate-300">
               <tr>
                 {/* Select All Checkbox */}
+                {isAdmin && (
                 <th className="px-3 py-3 text-center sticky left-0 bg-slate-100 z-30 w-10">
                   <button
                     type="button"
@@ -590,10 +600,13 @@ export const GroupsTab: React.FC = () => {
                     )}
                   </button>
                 </th>
+                )}
 
+                {isAdmin && (
                 <th className="px-2 py-3 text-center sticky left-10 bg-slate-100 z-30 w-14">
                   Действие
                 </th>
+                )}
 
                 <th className="px-3 py-3 sticky left-24 bg-slate-100 z-30 min-w-[130px]">
                   <SortHeader
@@ -769,6 +782,7 @@ export const GroupsTab: React.FC = () => {
                       }`}
                     >
                       {/* Checkbox */}
+                      {isAdmin && (
                       <td className="px-3 py-2 text-center sticky left-0 bg-white group-hover:bg-sky-50/50 z-10">
                         <button
                           type="button"
@@ -782,8 +796,9 @@ export const GroupsTab: React.FC = () => {
                           )}
                         </button>
                       </td>
+                      )}
 
-                      {/* Action Modal Edit */}
+                      {isAdmin && (
                       <td className="px-2 py-2 text-center sticky left-10 bg-white group-hover:bg-sky-50/50 z-10">
                         <button
                           type="button"
@@ -797,6 +812,7 @@ export const GroupsTab: React.FC = () => {
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                       </td>
+                      )}
 
                       {/* Group 1 (Inline Edit) */}
                       <td

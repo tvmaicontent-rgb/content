@@ -91,7 +91,7 @@ export const ProductUploadZone: React.FC<ProductUploadZoneProps> = ({
         setProgress(75);
 
         // If Webhook is set up, sync to Google Sheets immediately
-        const hasWebhook = Boolean(googleSheetsService.getWebhookUrl());
+        const hasWebhook = await googleSheetsService.refreshWebhookStatus();
         if (hasWebhook) {
           setStatusMessage({
             type: 'info',
