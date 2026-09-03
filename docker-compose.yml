@@ -1,0 +1,46 @@
+services:
+  content-panel:
+    image: content-panel:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+
+      # ── Authentication ──────────────────────────────────────────────────────
+      # Generate hash: node -e "require('bcryptjs').hash('PASSWORD',10).then(console.log)"
+      # Generate JWT_SECRET: openssl rand -hex 32
+      # Docker/Portainer: bcrypt contains "$" which compose eats — use *_B64 instead:
+      #   echo -n '$2b$10$...' | base64
+      ADMIN_PASSWORD_HASH_B64: ${ADMIN_PASSWORD_HASH_B64}
+      OBSERVER_PASSWORD_HASH_B64: ${OBSERVER_PASSWORD_HASH_B64}
+      JWT_SECRET: ${JWT_SECRET}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_BLOCK_MINUTES: ${LOGIN_BLOCK_MINUTES:-1}
+
+      # ── Main spreadsheet (products / tasks / contacts / managers / groups) ──
+      SPREADSHEET_ID: ${SPREADSHEET_ID}
+      GID_CONTENT: ${GID_CONTENT:-59376984}
+      GID_KAM: ${GID_KAM:-183144046}
+      GID_TASKS: ${GID_TASKS:-1482592400}
+      GID_NEW_PRODUCTS: ${GID_NEW_PRODUCTS:-413377182}
+      GID_CONTACTS: ${GID_CONTACTS:-1825148105}
+      GID_MANAGERS: ${GID_MANAGERS:-1474629181}
+      GID_WORKING_KAM: ${GID_WORKING_KAM:-1367779997}
+      GID_WORKING_CONTENT: ${GID_WORKING_CONTENT:-33531424}
+
+      # ── Groups spreadsheet ──────────────────────────────────────────────────
+      GROUPS_SPREADSHEET_ID: ${GROUPS_SPREADSHEET_ID}
+      GID_GROUPS: ${GID_GROUPS:-0}
+      GID_SITE_ORDER: ${GID_SITE_ORDER:-442661295}
+
+      # ── Properties spreadsheet ──────────────────────────────────────────────
+      PROPERTIES_SPREADSHEET_ID: ${PROPERTIES_SPREADSHEET_ID}
+
+      # ── Webhook (Google Apps Script URL) ────────────────────────────────────
+      GOOGLE_SHEETS_WEBHOOK_URL: ${GOOGLE_SHEETS_WEBHOOK_URL:-}
